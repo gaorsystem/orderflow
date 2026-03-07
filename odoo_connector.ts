@@ -1,18 +1,13 @@
-'use strict';
-
 /**
- * ============================================================
- * ODOO XML-RPC CONNECTOR — Módulo Robusto
- * ============================================================
+ * odoo_connector.ts — ESM compatible
+ * Importado desde server.ts como: import { getConnection } from "./odoo_connector.js"
+ *
  * Características:
- *   - Pool de conexiones por compañía (reutiliza sesiones autenticadas)
- *   - Heartbeat activo cada N segundos para mantener la sesión viva
+ *   - Pool de conexiones por compañía (reutiliza sesiones)
+ *   - Heartbeat activo para mantener sesión viva
  *   - Retry con backoff exponencial + jitter
  *   - Filtro automático por compañía (allowed_company_ids)
- *   - Queue de requests con concurrencia controlada
- *   - Serialización/deserialización XML-RPC completa
- *   - Sin dependencias externas (solo Node.js built-in)
- * ============================================================
+ *   - Sin dependencias externas (solo Node.js built-ins)
  */
 
 import http from 'http';
@@ -22,13 +17,9 @@ import { EventEmitter } from 'events';
 // ─────────────────────────────────────────────
 // XML-RPC SERIALIZER
 // ─────────────────────────────────────────────
-function serialize(value) {
-  if (value === null || value === undefined) {
-    return '<value><nil/></value>';
-  }
-  if (typeof value === 'boolean') {
-    return `<value><boolean>${value ? 1 : 0}</boolean></value>`;
-  }
+function serialize(value: any): string {
+  if (value === null || value === undefined) return '<value><nil/></value>';
+  if (typeof value === 'boolean') return `<value><boolean>${value ? 1 : 0}</boolean></value>`;
   if (typeof value === 'number') {
     return Number.isInteger(value)
       ? `<value><int>${value}</int></value>`
@@ -46,9 +37,6 @@ function serialize(value) {
   if (Array.isArray(value)) {
     return `<value><array><data>${value.map(serialize).join('')}</data></array></value>`;
   }
-  if (value instanceof Date) {
-    return `<value><dateTime.iso8601>${value.toISOString().replace(/[-:]/g, '').split('.')[0]}</dateTime.iso8601></value>`;
-  }
   if (typeof value === 'object') {
     const members = Object.entries(value)
       .map(([k, v]) => `<member><name>${k}</name>${serialize(v)}</member>`)
@@ -61,120 +49,100 @@ function serialize(value) {
 // ─────────────────────────────────────────────
 // XML-RPC DESERIALIZER
 // ─────────────────────────────────────────────
-function deserialize(xml) {
-  // Detectar fault
+function deserialize(xml: string): any {
   if (xml.includes('<fault>')) {
-    const codeMatch  = xml.match(/<name>faultCode<\/name>\s*<value>(?:<int>|<i4>)(\d+)/);
-    const strMatch   = xml.match(/<name>faultString<\/name>\s*<value><string>([\s\S]*?)<\/string>/);
-    const code = codeMatch ? parseInt(codeMatch[1]) : 0;
-    const msg  = strMatch  ? strMatch[1] : 'Unknown Odoo fault';
-    const err  = new Error(`Odoo Fault [${code}]: ${msg.trim()}`) as any;
-    err.faultCode = code;
+    const codeMatch = xml.match(/<name>faultCode<\/name>\s*<value>(?:<int>|<i4>)(\d+)/);
+    const strMatch = xml.match(/<name>faultString<\/name>\s*<value><string>([\s\S]*?)<\/string>/);
+    const err: any = new Error(`Odoo Fault [${codeMatch?.[1] ?? 0}]: ${strMatch?.[1]?.trim() ?? 'Unknown fault'}`);
+    err.faultCode = codeMatch ? parseInt(codeMatch[1]) : 0;
     throw err;
   }
 
-  // Extraer valor del primer param
   const paramMatch = xml.match(/<params>\s*<param>\s*([\s\S]*?)\s*<\/param>\s*<\/params>/);
-  if (!paramMatch) throw new Error('Invalid XML-RPC response: no params');
-
+  if (!paramMatch) throw new Error('Invalid XML-RPC response: no params block found');
   return parseValue(paramMatch[1].trim());
 }
 
-function parseValue(xml) {
+function parseValue(xml: string): any {
   xml = xml.trim();
 
-  // <value> wrapper
-  const valMatch = xml.match(/^<value>([\s\S]*)<\/value>$/);
-  if (valMatch) return parseValue(valMatch[1].trim());
+  // Unwrap <value> tag
+  const vMatch = xml.match(/^<value>([\s\S]*)<\/value>$/);
+  if (vMatch) return parseValue(vMatch[1].trim());
 
-  // Tipos primitivos
-  const intMatch = xml.match(/^<(?:int|i4|i8)>([\s\S]*?)<\/(?:int|i4|i8)>$/);
-  if (intMatch) return parseInt(intMatch[1]);
+  // int / i4 / i8
+  const intM = xml.match(/^<(?:int|i4|i8)>([\s\S]*?)<\/(?:int|i4|i8)>$/);
+  if (intM) return parseInt(intM[1]);
 
-  const dblMatch = xml.match(/^<double>([\s\S]*?)<\/double>$/);
-  if (dblMatch) return parseFloat(dblMatch[1]);
+  // double
+  const dblM = xml.match(/^<double>([\s\S]*?)<\/double>$/);
+  if (dblM) return parseFloat(dblM[1]);
 
-  const boolMatch = xml.match(/^<boolean>([\s\S]*?)<\/boolean>$/);
-  if (boolMatch) return boolMatch[1].trim() === '1';
+  // boolean
+  const boolM = xml.match(/^<boolean>([\s\S]*?)<\/boolean>$/);
+  if (boolM) return boolM[1].trim() === '1';
 
-  const strMatch = xml.match(/^<string>([\s\S]*?)<\/string>$/);
-  if (strMatch) return strMatch[1]
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  // string
+  const strM = xml.match(/^<string>([\s\S]*?)<\/string>$/);
+  if (strM) return strM[1]
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 
   if (xml === '<nil/>' || xml === '<nil></nil>') return null;
   if (xml === '<string/>' || xml === '<string></string>') return '';
 
-  const dtMatch = xml.match(/^<dateTime\.iso8601>([\s\S]*?)<\/dateTime\.iso8601>$/);
-  if (dtMatch) return new Date(dtMatch[1]);
-
-  // Array
+  // array
   if (xml.startsWith('<array>')) {
-    const dataMatch = xml.match(/<data>([\s\S]*)<\/data>/);
-    if (!dataMatch) return [];
-    return parseDataSection(dataMatch[1]);
+    const dataM = xml.match(/<data>([\s\S]*)<\/data>/);
+    if (!dataM) return [];
+    const items: any[] = [];
+    const re = /<value>([\s\S]*?)<\/value>/g;
+    let m;
+    while ((m = re.exec(dataM[1])) !== null) items.push(parseValue(m[1].trim()));
+    return items;
   }
 
-  // Struct
+  // struct
   if (xml.startsWith('<struct>')) {
-    const obj = {};
+    const obj: any = {};
     const memberRe = /<member>([\s\S]*?)<\/member>/g;
     let m;
     while ((m = memberRe.exec(xml)) !== null) {
-      const nameMatch = m[1].match(/<name>([\s\S]*?)<\/name>/);
-      const valMatch2 = m[1].match(/<value>([\s\S]*?)<\/value>/);
-      if (nameMatch && valMatch2) {
-        obj[nameMatch[1]] = parseValue(valMatch2[1].trim());
-      }
+      const nameM = m[1].match(/<name>([\s\S]*?)<\/name>/);
+      const valM = m[1].match(/<value>([\s\S]*?)<\/value>/);
+      if (nameM && valM) obj[nameM[1]] = parseValue(valM[1].trim());
     }
     return obj;
   }
 
-  // Texto plano (string sin tags)
+  // plain text (string without tags)
   if (!xml.startsWith('<')) return xml;
-
   return null;
 }
 
-function parseDataSection(data) {
-  const items = [];
-  const valueRe = /<value>([\s\S]*?)<\/value>/g;
-  let m;
-  while ((m = valueRe.exec(data)) !== null) {
-    items.push(parseValue(m[1].trim()));
-  }
-  return items;
-}
-
 // ─────────────────────────────────────────────
-// HTTP RAW REQUEST (sin dependencias)
+// HTTP REQUEST (sin dependencias externas)
 // ─────────────────────────────────────────────
-function httpRequest(urlStr, body, timeoutMs = 30000) {
+function httpRequest(urlStr: string, body: string, timeoutMs = 30000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const url      = new URL(urlStr);
-    const lib      = url.protocol === 'https:' ? https : http;
-    const bodyBuf  = Buffer.from(body, 'utf8');
+    const url = new URL(urlStr);
+    const lib = url.protocol === 'https:' ? https : http;
+    const buf = Buffer.from(body, 'utf8');
 
-    const options = {
+    const req = lib.request({
       hostname: url.hostname,
-      port:     url.port || (url.protocol === 'https:' ? 443 : 80),
-      path:     url.pathname + url.search,
-      method:   'POST',
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      method: 'POST',
       headers: {
-        'Content-Type':   'text/xml; charset=utf-8',
-        'Content-Length': bodyBuf.length,
-        'Connection':     'keep-alive',
-        'Accept-Encoding':'identity',
+        'Content-Type': 'text/xml; charset=utf-8',
+        'Content-Length': buf.length,
+        'Connection': 'keep-alive',
       },
       timeout: timeoutMs,
-    };
-
-    const req = lib.request(options, (res) => {
-      const chunks = [];
-      res.on('data', (c) => chunks.push(c));
+    }, (res) => {
+      const chunks: any[] = [];
+      res.on('data', c => chunks.push(c));
       res.on('end', () => {
         if (res.statusCode !== 200) {
           reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
@@ -184,223 +152,110 @@ function httpRequest(urlStr, body, timeoutMs = 30000) {
       });
     });
 
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error(`Request timeout after ${timeoutMs}ms`));
-    });
-
+    req.on('timeout', () => { req.destroy(); reject(new Error(`Timeout after ${timeoutMs}ms`)); });
     req.on('error', reject);
-    req.write(bodyBuf);
+    req.write(buf);
     req.end();
   });
 }
 
 // ─────────────────────────────────────────────
-// RETRY CON BACKOFF EXPONENCIAL + JITTER
+// RETRY con backoff exponencial + jitter
 // ─────────────────────────────────────────────
-async function withRetry(fn, {
-  maxRetries  = 4,
-  baseDelayMs = 500,
-  maxDelayMs  = 10000,
-  shouldRetry = (err) => !err.faultCode, // No reintentar faults de Odoo (errores de lógica)
-  onRetry     = null,
-} = {}) {
+async function withRetry(fn: () => Promise<any>, { maxRetries = 4, baseDelayMs = 500, maxDelayMs = 10000, shouldRetry = (e: any) => true as boolean, onRetry = null as any } = {}) {
   let lastErr;
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (err) {
       lastErr = err;
-
       if (attempt === maxRetries || !shouldRetry(err)) throw err;
-
-      // Backoff exponencial con jitter: delay * (1 + random*0.3)
-      const base  = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
-      const delay = Math.round(base * (1 + Math.random() * 0.3));
-
-      if (onRetry) onRetry(attempt, delay, err);
-      await new Promise(r => setTimeout(r, delay));
+      const delay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs) * (1 + Math.random() * 0.3);
+      if (onRetry) onRetry(attempt, Math.round(delay), err);
+      await new Promise(r => setTimeout(r, Math.round(delay)));
     }
   }
-
   throw lastErr;
 }
 
 // ─────────────────────────────────────────────
-// REQUEST QUEUE — Controla concurrencia
+// REQUEST QUEUE — controla concurrencia
 // ─────────────────────────────────────────────
 class RequestQueue {
-  private concurrency: number;
-  private running: number;
-  private queue: any[];
+  concurrency: number;
+  running: number;
+  queue: any[];
 
   constructor(concurrency = 3) {
     this.concurrency = concurrency;
-    this.running     = 0;
-    this.queue       = [];
+    this.running = 0;
+    this.queue = [];
   }
-
-  async add(fn) {
+  add(fn: () => Promise<any>): Promise<any> {
     return new Promise((resolve, reject) => {
       this.queue.push({ fn, resolve, reject });
       this._run();
     });
   }
-
   async _run() {
     if (this.running >= this.concurrency || !this.queue.length) return;
-
     this.running++;
-    const { fn, resolve, reject } = this.queue.shift();
-
-    try {
-      resolve(await fn());
-    } catch (err) {
-      reject(err);
-    } finally {
+    const item = this.queue.shift();
+    if (!item) return;
+    const { fn, resolve, reject } = item;
+    try { resolve(await fn()); } catch (err) { reject(err); } finally {
       this.running--;
       this._run();
     }
   }
-
-  get pending() { return this.queue.length; }
-  get active()  { return this.running; }
 }
 
 // ─────────────────────────────────────────────
-// CONNECTION POOL — Una entrada por compañía
-// ─────────────────────────────────────────────
-class OdooConnectionPool {
-  private _pool: Map<string, OdooConnection>;
-
-  constructor() {
-    this._pool = new Map(); // key: `${url}::${db}::${companyId}`
-  }
-
-  _key(cfg) {
-    return `${cfg.url}::${cfg.db}::${cfg.companyId}`;
-  }
-
-  get(cfg) {
-    return this._pool.get(this._key(cfg)) || null;
-  }
-
-  set(cfg, conn) {
-    this._pool.set(this._key(cfg), conn);
-  }
-
-  invalidate(cfg) {
-    const key = this._key(cfg);
-    const conn = this._pool.get(key);
-    if (conn) {
-      conn._stopHeartbeat();
-      this._pool.delete(key);
-    }
-  }
-
-  invalidateAll() {
-    for (const conn of this._pool.values()) conn._stopHeartbeat();
-    this._pool.clear();
-  }
-
-  get size() { return this._pool.size; }
-
-  stats() {
-    const result = {};
-    for (const [key, conn] of this._pool.entries()) {
-      result[key] = conn.stats();
-    }
-    return result;
-  }
-}
-
-// Singleton del pool
-const pool = new OdooConnectionPool();
-
-// ─────────────────────────────────────────────
-// ODOO CONNECTION — Una instancia autenticada
+// ODOO CONNECTION
 // ─────────────────────────────────────────────
 class OdooConnection extends EventEmitter {
-  public cfg: any;
-  public uid: number | null;
-  public authenticated: boolean;
-  private _heartbeatTimer: any;
-  private _authPromise: Promise<void> | null;
-  private _queue: RequestQueue;
-  private _stats: any;
+  cfg: any;
+  uid: number | null = null;
+  authenticated = false;
+  _heartbeatTimer: any = null;
+  _authPromise: Promise<any> | null = null;
+  _queue: RequestQueue;
+  _stats: any;
 
-  /**
-   * @param {object} cfg
-   * @param {string}  cfg.url         — https://miodoo.com
-   * @param {string}  cfg.db          — nombre de la BD en Odoo
-   * @param {string}  cfg.username    — usuario (email)
-   * @param {string}  cfg.password    — contraseña
-   * @param {number}  cfg.companyId   — ID de la compañía (multicompañía)
-   * @param {number}  [cfg.heartbeatMs=60000]   — intervalo heartbeat
-   * @param {number}  [cfg.timeoutMs=30000]     — timeout por request
-   * @param {number}  [cfg.concurrency=3]       — requests paralelos
-   * @param {boolean} [cfg.debug=false]         — logs detallados
-   */
-  constructor(cfg) {
+  constructor(cfg: any) {
     super();
-
     if (!cfg.url || !cfg.db || !cfg.username || !cfg.password || !cfg.companyId) {
-      throw new Error('OdooConnection: url, db, username, password y companyId son requeridos');
+      throw new Error('OdooConnection requiere: url, db, username, password, companyId');
     }
-
     this.cfg = {
-      heartbeatMs : 60_000,
-      timeoutMs   : 30_000,
-      concurrency : 3,
-      debug       : false,
+      heartbeatMs: 60_000,
+      timeoutMs: 30_000,
+      concurrency: 3,
+      debug: false,
       ...cfg,
-      url: cfg.url.replace(/\/$/, ''), // sin trailing slash
+      url: cfg.url.replace(/\/+$/, ''), // quitar trailing slashes
     };
-
-    this.uid           = null;
-    this.authenticated = false;
-    this._heartbeatTimer = null;
-    this._authPromise    = null;
-    this._queue          = new RequestQueue(this.cfg.concurrency);
-
-    // Estadísticas
-    this._stats = {
-      totalCalls    : 0,
-      successCalls  : 0,
-      errorCalls    : 0,
-      retryCalls    : 0,
-      authCount     : 0,
-      lastCallAt    : null,
-      connectedAt   : null,
-    };
+    this._queue = new RequestQueue(this.cfg.concurrency);
+    this._stats = { totalCalls: 0, successCalls: 0, errorCalls: 0, retryCalls: 0, authCount: 0, lastCallAt: null, connectedAt: null };
   }
 
-  // ── LOG ──────────────────────────────────────
-  _log(level, ...args) {
+  _log(level: string, ...args: any[]) {
     if (level === 'debug' && !this.cfg.debug) return;
-    const prefix = `[OdooXRPC][cía:${this.cfg.companyId}]`;
+    const prefix = `[Odoo][cía:${this.cfg.companyId}]`;
     if (level === 'error') console.error(prefix, ...args);
     else if (level === 'warn') console.warn(prefix, ...args);
-    else if (this.cfg.debug) console.log(prefix, ...args);
+    else console.log(prefix, ...args);
   }
 
   // ── AUTENTICACIÓN ────────────────────────────
   async authenticate() {
-    // Evitar autenticaciones paralelas: reusar la promesa en curso
     if (this._authPromise) return this._authPromise;
-
-    this._authPromise = this._doAuthenticate();
-    try {
-      await this._authPromise;
-    } finally {
-      this._authPromise = null;
-    }
+    this._authPromise = this._doAuth().finally(() => { this._authPromise = null; });
+    return this._authPromise;
   }
 
-  async _doAuthenticate() {
+  async _doAuth() {
     this._log('debug', 'Autenticando...');
-
     const body = `<?xml version="1.0"?>
 <methodCall>
   <methodName>authenticate</methodName>
@@ -414,90 +269,51 @@ class OdooConnection extends EventEmitter {
 
     const xml = await withRetry(
       () => httpRequest(`${this.cfg.url}/xmlrpc/2/common`, body, this.cfg.timeoutMs),
-      {
-        maxRetries: 3,
-        baseDelayMs: 1000,
-        onRetry: (attempt, delay) =>
-          this._log('warn', `Auth reintento ${attempt}, esperando ${delay}ms`),
-      }
+      { maxRetries: 3, baseDelayMs: 1000, onRetry: (a: any, d: any) => this._log('warn', `Auth reintento ${a}, delay ${d}ms`) }
     );
 
     const uid = deserialize(xml);
     if (!uid || uid === false || uid === 0) {
-      throw new Error('Autenticación fallida: credenciales incorrectas o usuario sin acceso');
+      throw new Error('Autenticación fallida: credenciales incorrectas o usuario sin acceso a esta compañía');
     }
 
-    this.uid           = uid;
+    this.uid = uid;
     this.authenticated = true;
     this._stats.authCount++;
     this._stats.connectedAt = new Date();
-
-    this._log('debug', `Autenticado con uid=${uid}`);
+    this._log('debug', `Autenticado OK, uid=${uid}`);
     this.emit('authenticated', uid);
-
-    // Iniciar heartbeat
     this._startHeartbeat();
   }
 
   // ── HEARTBEAT ────────────────────────────────
   _startHeartbeat() {
     this._stopHeartbeat();
-
     this._heartbeatTimer = setInterval(async () => {
       try {
-        await this._ping();
-        this._log('debug', 'Heartbeat OK');
+        await httpRequest(`${this.cfg.url}/xmlrpc/2/common`,
+          `<?xml version="1.0"?><methodCall><methodName>version</methodName><params></params></methodCall>`,
+          10_000
+        );
         this.emit('heartbeat', { ok: true });
-      } catch (err) {
+      } catch (err: any) {
         this._log('warn', 'Heartbeat falló, re-autenticando:', err.message);
         this.authenticated = false;
         this.uid = null;
         this.emit('heartbeat', { ok: false, error: err.message });
-        try {
-          await this.authenticate();
-        } catch (authErr) {
-          this._log('error', 'Re-autenticación fallida:', authErr.message);
-          this.emit('error', authErr);
-        }
+        try { await this.authenticate(); } catch (e) { this.emit('error', e); }
       }
     }, this.cfg.heartbeatMs);
 
-    // No bloquear el proceso si solo queda este timer
-    if (this._heartbeatTimer.unref) {
-      this._heartbeatTimer.unref();
-    }
+    if (this._heartbeatTimer.unref) this._heartbeatTimer.unref();
   }
 
   _stopHeartbeat() {
-    if (this._heartbeatTimer) {
-      clearInterval(this._heartbeatTimer);
-      this._heartbeatTimer = null;
-    }
+    if (this._heartbeatTimer) { clearInterval(this._heartbeatTimer); this._heartbeatTimer = null; }
   }
 
-  // Ping liviano: leer versión de Odoo
-  async _ping() {
-    const body = `<?xml version="1.0"?>
-<methodCall>
-  <methodName>version</methodName>
-  <params></params>
-</methodCall>`;
-    const xml = await httpRequest(
-      `${this.cfg.url}/xmlrpc/2/common`, body, 10_000
-    );
-    return deserialize(xml);
-  }
-
-  // ── EXECUTE_KW — Llamada principal ───────────
-  /**
-   * Ejecutar cualquier método de Odoo
-   * @param {string}   model   — ej: 'product.product'
-   * @param {string}   method  — ej: 'search_read'
-   * @param {Array}    args    — argumentos posicionales
-   * @param {object}   kwargs  — argumentos nombrados
-   */
-  async execute(model, method, args = [], kwargs = {}) {
-    // Asegurar autenticación
+  // ── EXECUTE_KW ───────────────────────────────
+  async execute(model: string, method: string, args: any[] = [], kwargs: any = {}) {
     if (!this.authenticated) await this.authenticate();
 
     // Inyectar contexto de compañía automáticamente
@@ -506,17 +322,16 @@ class OdooConnection extends EventEmitter {
       context: {
         lang: 'es_PE',
         tz: 'America/Lima',
-        ...((kwargs as any).context || {}),
+        ...(kwargs.context || {}),
         allowed_company_ids: [this.cfg.companyId],
         company_id: this.cfg.companyId,
       },
     };
 
-    // Encolar para respetar concurrencia
     return this._queue.add(() => this._doExecute(model, method, args, kwargs));
   }
 
-  async _doExecute(model, method, args, kwargs) {
+  async _doExecute(model: string, method: string, args: any[], kwargs: any) {
     this._stats.totalCalls++;
     this._stats.lastCallAt = new Date();
 
@@ -536,113 +351,58 @@ class OdooConnection extends EventEmitter {
 
     try {
       const xml = await withRetry(
-        () => httpRequest(
-          `${this.cfg.url}/xmlrpc/2/object`,
-          body,
-          this.cfg.timeoutMs
-        ),
+        () => httpRequest(`${this.cfg.url}/xmlrpc/2/object`, body, this.cfg.timeoutMs),
         {
-          maxRetries  : 4,
-          baseDelayMs : 500,
-          maxDelayMs  : 8000,
-          shouldRetry : (err) => {
-            // No reintentar errores de lógica de Odoo (AccessError, ValidationError)
-            if (err.faultCode) return false;
-            // Reintentar errores de red y timeouts
-            return true;
-          },
-          onRetry: (attempt, delay, err) => {
+          maxRetries: 4,
+          baseDelayMs: 500,
+          shouldRetry: (err: any) => !err.faultCode, // no reintentar errores de lógica Odoo
+          onRetry: (a: any, d: any, err: any) => {
             this._stats.retryCalls++;
-            this._log('warn', `[${model}.${method}] reintento ${attempt}, delay ${delay}ms: ${err.message}`);
+            this._log('warn', `[${model}.${method}] reintento ${a} (${d}ms): ${err.message}`);
           },
         }
       );
 
       const result = deserialize(xml);
       this._stats.successCalls++;
-      this._log('debug', `[${model}.${method}] OK → ${Array.isArray(result) ? result.length + ' registros' : typeof result}`);
       return result;
 
-    } catch (err) {
+    } catch (err: any) {
       this._stats.errorCalls++;
-
-      // Si el error puede ser por sesión expirada → re-auth y reintentar UNA vez
-      if (!err.faultCode && this.authenticated) {
-        this._log('warn', `Posible sesión expirada, re-autenticando...`);
+      // Si puede ser sesión expirada (error de red, no fault), re-auth y un reintento más
+      if (!err.faultCode) {
+        this._log('warn', 'Posible sesión expirada, re-autenticando...');
         this.authenticated = false;
         await this.authenticate();
-        // Un reintento más tras re-auth
-        const xml2 = await httpRequest(
-          `${this.cfg.url}/xmlrpc/2/object`, body, this.cfg.timeoutMs
-        );
+        const xml2 = await httpRequest(`${this.cfg.url}/xmlrpc/2/object`, body, this.cfg.timeoutMs);
         return deserialize(xml2);
       }
-
-      this._log('error', `[${model}.${method}] Error:`, err.message);
       throw err;
     }
   }
 
   // ── SHORTCUTS ────────────────────────────────
-
-  /** Buscar y leer registros */
-  searchRead(model: string, domain = [], fields = [], opts: any = {}) {
+  searchRead(model: string, domain: any[] = [], fields: string[] = [], opts: any = {}) {
     return this.execute(model, 'search_read', [domain], {
-      fields,
-      limit  : opts.limit  || 0,
-      offset : opts.offset || 0,
-      order  : opts.order  || 'id asc',
+      fields, limit: opts.limit || 0, offset: opts.offset || 0, order: opts.order || 'id asc',
     });
   }
-
-  /** Solo IDs */
-  search(model: string, domain = [], opts: any = {}) {
-    return this.execute(model, 'search', [domain], {
-      limit  : opts.limit  || 0,
-      offset : opts.offset || 0,
-      order  : opts.order  || 'id asc',
-    });
+  search(model: string, domain: any[] = [], opts: any = {}) {
+    return this.execute(model, 'search', [domain], { limit: opts.limit || 0, offset: opts.offset || 0 });
   }
+  searchCount(model: string, domain: any[] = []) { return this.execute(model, 'search_count', [domain]); }
+  read(model: string, ids: number[], fields: string[] = []) { return this.execute(model, 'read', [ids], { fields }); }
+  create(model: string, values: any) { return this.execute(model, 'create', [values]); }
+  write(model: string, ids: number[], values: any) { return this.execute(model, 'write', [ids, values]); }
+  unlink(model: string, ids: number[]) { return this.execute(model, 'unlink', [ids]); }
 
-  /** Contar registros */
-  searchCount(model, domain = []) {
-    return this.execute(model, 'search_count', [domain]);
-  }
-
-  /** Leer por IDs */
-  read(model, ids, fields = []) {
-    return this.execute(model, 'read', [ids], { fields });
-  }
-
-  /** Crear registro */
-  create(model, values) {
-    return this.execute(model, 'create', [values]);
-  }
-
-  /** Actualizar registros */
-  write(model, ids, values) {
-    return this.execute(model, 'write', [ids, values]);
-  }
-
-  /** Eliminar registros */
-  unlink(model, ids) {
-    return this.execute(model, 'unlink', [ids]);
-  }
-
-  /** Llamar método custom del modelo */
-  call(model, method, ids = [], kwargs = {}) {
-    return this.execute(model, method, [ids], kwargs);
-  }
-
-  // ── STATS & CLEANUP ──────────────────────────
   stats() {
     return {
       ...this._stats,
-      uid          : this.uid,
+      uid: this.uid,
       authenticated: this.authenticated,
-      companyId    : this.cfg.companyId,
-      queuePending : this._queue.pending,
-      queueActive  : this._queue.active,
+      companyId: this.cfg.companyId,
+      url: this.cfg.url,
       uptime: this._stats.connectedAt
         ? Math.round((Date.now() - this._stats.connectedAt.getTime()) / 1000) + 's'
         : null,
@@ -653,32 +413,41 @@ class OdooConnection extends EventEmitter {
     this._stopHeartbeat();
     this.authenticated = false;
     this.uid = null;
-    pool.invalidate(this.cfg);
+    connectionPool.delete(_poolKey(this.cfg));
     this.emit('disconnected');
-    this._log('debug', 'Desconectado y removido del pool');
   }
 }
 
 // ─────────────────────────────────────────────
-// FACTORY PRINCIPAL — getConnection()
+// CONNECTION POOL (singleton Map)
 // ─────────────────────────────────────────────
+const connectionPool = new Map<string, OdooConnection>();
+
+function _poolKey(cfg: any) {
+  return `${cfg.url}::${cfg.db}::${cfg.companyId}`;
+}
+
 /**
- * Obtiene o crea una conexión desde el pool.
- * Reutiliza la conexión existente si ya está autenticada.
+ * Obtiene o crea una conexión del pool.
+ * Si la conexión ya existe y está autenticada, la reutiliza.
  *
  * @param {object} cfg — mismos parámetros que OdooConnection
  * @returns {Promise<OdooConnection>}
  */
-async function getConnection(cfg) {
-  let conn = pool.get(cfg);
+async function getConnection(cfg: any): Promise<OdooConnection> {
+  // Normalizar URL antes de usar como key
+  const normalizedCfg = { ...cfg, url: (cfg.url || '').replace(/\/+$/, '') };
+  const key = _poolKey(normalizedCfg);
+
+  let conn = connectionPool.get(key);
 
   if (conn && conn.authenticated) {
     return conn;
   }
 
   if (!conn) {
-    conn = new OdooConnection(cfg);
-    pool.set(cfg, conn);
+    conn = new OdooConnection(normalizedCfg);
+    connectionPool.set(key, conn);
   }
 
   await conn.authenticate();
@@ -686,14 +455,6 @@ async function getConnection(cfg) {
 }
 
 // ─────────────────────────────────────────────
-// EXPORTS
+// EXPORTS (ESM)
 // ─────────────────────────────────────────────
-export {
-  getConnection,
-  OdooConnection,
-  OdooConnectionPool,
-  pool,
-  // Utilidades expuestas para testing
-  serialize as _serialize,
-  deserialize as _deserialize,
-};
+export { getConnection, OdooConnection, connectionPool };
