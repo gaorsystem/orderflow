@@ -191,16 +191,27 @@ async function startServer() {
     res.json(data || []);
   });
 
+  console.log(`Attempting to listen on 0.0.0.0:${PORT}...`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server successfully running on port ${PORT}`);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { 
-        middlewareMode: true,
-        hmr: false // Disable HMR to avoid port conflicts
-      },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    console.log("Initializing Vite middleware...");
+    try {
+      const vite = await createViteServer({
+        server: { 
+          middlewareMode: true,
+          hmr: false 
+        },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite middleware initialized.");
+    } catch (err) {
+      console.error("Vite initialization failed:", err);
+    }
   } else {
     // Serve static files in production
     app.use(express.static(path.join(__dirname, "dist")));
@@ -208,11 +219,6 @@ async function startServer() {
       res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
-
-  console.log(`Attempting to listen on 0.0.0.0:${PORT}...`);
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server successfully running on http://localhost:${PORT}`);
-  });
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
