@@ -51,8 +51,8 @@ function serialize(value: any): string {
 // ─────────────────────────────────────────────
 function deserialize(xml: string): any {
   if (xml.includes('<fault>')) {
-    const codeMatch = xml.match(/<n>faultCode<\/n>\s*<value>(?:<int>|<i4>)(\d+)/);
-    const strMatch = xml.match(/<n>faultString<\/n>\s*<value><string>([\s\S]*?)<\/string>/);
+    const codeMatch = xml.match(/<name>faultCode<\/name>\s*<value>(?:<int>|<i4>)(\d+)/);
+    const strMatch = xml.match(/<name>faultString<\/name>\s*<value><string>([\s\S]*?)<\/string>/);
     const err: any = new Error(`Odoo Fault [${codeMatch?.[1] ?? 0}]: ${strMatch?.[1]?.trim() ?? 'Unknown fault'}`);
     err.faultCode = codeMatch ? parseInt(codeMatch[1]) : 0;
     throw err;
@@ -108,7 +108,7 @@ function parseValue(xml: string): any {
     const memberRe = /<member>([\s\S]*?)<\/member>/g;
     let m;
     while ((m = memberRe.exec(xml)) !== null) {
-      const nameM = m[1].match(/<n>([\s\S]*?)<\/n>/);
+      const nameM = m[1].match(/<name>([\s\S]*?)<\/name>/);
       const valM = m[1].match(/<value>([\s\S]*?)<\/value>/);
       if (nameM && valM) obj[nameM[1]] = parseValue(valM[1].trim());
     }
