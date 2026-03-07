@@ -142,6 +142,17 @@ export default function App() {
   
   const [data, setData] = useState<DashboardData>(getDemoData());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [odooConfig, setOdooConfig] = useState({
+    url: '',
+    db: '',
+    username: '',
+    password: '',
+    companyId: 0
+  });
+  const [availableCompanies, setAvailableCompanies] = useState<{id: number, name: string}[]>([]);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(!config.url);
@@ -182,13 +193,57 @@ export default function App() {
     }
   }, [config]);
 
+  const discoverCompanies = async () => {
+    setIsDiscovering(true);
+    setConfigError(null);
+    try {
+      const res = await fetch('/api/odoo/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: odooConfig.url,
+          db: odooConfig.db,
+          username: odooConfig.username,
+          password: odooConfig.password
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al conectar con Odoo');
+      setAvailableCompanies(data.companies);
+      if (data.companies.length > 0) {
+        setOdooConfig(prev => ({ ...prev, companyId: data.companies[0].id }));
+      }
+    } catch (err: any) {
+      setConfigError(err.message);
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  const saveOdooConfig = async () => {
+    setConfigError(null);
+    setConfigSuccess(null);
+    try {
+      const res = await fetch('/api/odoo/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(odooConfig)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al guardar configuración');
+      setConfigSuccess('Configuración guardada correctamente');
+      setTimeout(() => setIsModalOpen(false), 1500);
+      loadAll();
+    } catch (err: any) {
+      setConfigError(err.message);
+    }
+  };
   const loadAll = useCallback(async () => {
     setIsRefreshing(true);
     
     // Check if we should use server-side proxy or direct Supabase
     const useProxy = !config.url || !config.key;
-    setIsDemoMode(useProxy && !data.is_odoo_connected);
-
+    
     try {
       // Always try to fetch from our server first as it has the service role key
       const [statsRes, ordersRes, odooRes] = await Promise.all([
@@ -215,7 +270,7 @@ export default function App() {
         }));
         
         // If we got real data from server, we are not in demo mode
-        if (!odoo.is_demo || stats.active_sessions > 0 || orders.length > 0) {
+        if (!odoo.is_demo) {
           setIsDemoMode(false);
         }
       }
@@ -243,9 +298,9 @@ export default function App() {
       }
     }
 
-    setLastUpdate(new Date().toLocaleTimeString());
     setIsRefreshing(false);
-  }, [config, sbFetch, data.is_odoo_connected]);
+    setLastUpdate(new Date().toLocaleTimeString());
+  }, [config, sbFetch]);
 
   useEffect(() => {
     loadAll();
@@ -359,10 +414,17 @@ export default function App() {
             <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center">
               <Rocket className="w-5 h-5 text-white fill-current" />
             </div>
-            <h1 className="font-display text-lg font-bold tracking-tight">
-              OrderFlow <span className="font-normal opacity-80">Monitor</span>
-              <span className="ml-2 px-1.5 py-0.5 bg-white/20 rounded text-[9px] font-black uppercase tracking-tighter">ADMIN</span>
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="font-display text-lg font-bold tracking-tight leading-none">
+                OrderFlow <span className="font-normal opacity-80">Monitor</span>
+                <span className="ml-2 px-1.5 py-0.5 bg-white/20 rounded text-[9px] font-black uppercase tracking-tighter">ADMIN</span>
+              </h1>
+              {data.is_odoo_connected && (
+                <span className="text-[9px] font-medium opacity-70 flex items-center gap-1">
+                  <Database className="w-2.5 h-2.5" /> Conectado a Odoo
+                </span>
+              )}
+            </div>
           </div>
           
           <nav className="flex items-center h-10 ml-4">
@@ -432,7 +494,7 @@ export default function App() {
               <div className="col-span-full bg-odoo-amber/10 border border-odoo-amber/30 rounded-lg p-4 flex items-center gap-3 text-odoo-amber text-[11px]">
                 <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                 <span>
-                  No hay conexión configurada. Los datos mostrados son de <strong>demostración</strong>. Haz clic en el icono de <strong>engranaje</strong> para conectar con tu Supabase.
+                  No hay conexión configurada con <strong>Odoo</strong>. Los datos mostrados son de <strong>demostración</strong>. Haz clic en el icono de <strong>engranaje</strong> para conectar con tu base de datos real de <strong>GaorSystem Perú</strong>.
                 </span>
               </div>
             )}
@@ -1138,24 +1200,29 @@ export class OdooConnection extends EventEmitter {
                   Conexión Directa Odoo 17 (Backend)
                 </h3>
                 <div className="ml-8 space-y-4">
-                  <p className="text-sm text-text-muted">Si tienes un API Key de Odoo 17, puedes configurar la conexión directa en el servidor de este dashboard agregando estas variables de entorno:</p>
-                  <div className="grid grid-cols-1 gap-2">
-                    {[
-                      ['ODOO_URL', 'https://tu-odoo.com'],
-                      ['ODOO_DB', 'nombre_base_datos'],
-                      ['ODOO_USERNAME', 'usuario@empresa.com'],
-                      ['ODOO_PASSWORD', 'tu_api_key_o_password'],
-                      ['ODOO_COMPANY_ID', '1']
-                    ].map(([key, val]) => (
-                      <div key={key} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-border-light">
-                        <code className="text-[11px] font-bold text-odoo-purple">{key}</code>
-                        <code className="text-[11px] text-text-muted">{val}</code>
-                      </div>
-                    ))}
+                  <p className="text-sm text-text-muted">Puedes configurar la conexión directa con Odoo usando el botón de <strong>Configuración</strong> (icono de engranaje) en la barra superior. El sistema te permitirá:</p>
+                  <ul className="list-disc list-inside text-sm text-text-muted space-y-1 ml-2">
+                    <li>Validar tus credenciales en tiempo real.</li>
+                    <li>Listar y seleccionar la compañía específica de tu base de datos.</li>
+                    <li>Activar el monitoreo en vivo de tus ventas reales.</li>
+                  </ul>
+                  <div className="p-4 bg-odoo-purple/5 border border-odoo-purple/10 rounded-lg">
+                    <p className="text-[11px] text-text-muted">También puedes pre-configurar estas variables en tu servidor:</p>
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                      {[
+                        ['ODOO_URL', 'https://tu-odoo.com'],
+                        ['ODOO_DB', 'nombre_base_datos'],
+                        ['ODOO_USERNAME', 'usuario@empresa.com'],
+                        ['ODOO_PASSWORD', 'tu_api_key_o_password'],
+                        ['ODOO_COMPANY_ID', '1']
+                      ].map(([key, val]) => (
+                        <div key={key} className="flex items-center justify-between p-2 bg-white rounded border border-border-light">
+                          <code className="text-[11px] font-bold text-odoo-purple">{key}</code>
+                          <code className="text-[11px] text-text-muted">{val}</code>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-[11px] text-text-muted italic">
-                    * Una vez configuradas, el dashboard intentará obtener estadísticas reales directamente de Odoo a través del conector XML-RPC integrado.
-                  </p>
                 </div>
               </section>
 
@@ -1452,60 +1519,145 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="relative w-full max-w-md bg-white border border-border-light rounded-xl p-7 shadow-2xl"
+              className="relative w-full max-w-lg bg-white border border-border-light rounded-2xl shadow-2xl overflow-hidden"
             >
-              <h3 className="text-lg font-bold text-text-main mb-1">Configurar Conexión</h3>
-              <p className="text-[11px] text-text-muted mb-6 font-medium">Ingresa tus credenciales de Supabase para cargar datos reales</p>
-              
-              <form onSubmit={saveConfig} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] text-text-muted uppercase tracking-widest font-bold mb-1.5">Supabase URL</label>
-                  <input 
-                    name="url"
-                    defaultValue={config.url}
-                    className="w-full bg-gray-50 border border-border-light rounded-md px-3 py-2 text-xs text-text-main outline-none focus:border-odoo-purple transition-colors"
-                    placeholder="https://xxxx.supabase.co"
-                    required
-                  />
+              <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-text-main font-display">Configuración de Odoo</h2>
+                    <p className="text-[11px] text-text-muted">Conecta OrderFlow con tu base de datos real</p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] text-text-muted uppercase tracking-widest font-bold mb-1.5">Anon Key</label>
-                  <input 
-                    name="key"
-                    type="password"
-                    defaultValue={config.key}
-                    className="w-full bg-gray-50 border border-border-light rounded-md px-3 py-2 text-xs text-text-main outline-none focus:border-odoo-purple transition-colors"
-                    placeholder="eyJhbGci..."
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-text-muted uppercase tracking-widest font-bold mb-1.5">Company ID</label>
-                  <input 
-                    name="company"
-                    type="number"
-                    defaultValue={config.company}
-                    className="w-full bg-gray-50 border border-border-light rounded-md px-3 py-2 text-xs text-text-main outline-none focus:border-odoo-purple transition-colors"
-                    required
-                  />
-                </div>
-                
-                <div className="flex gap-3 mt-8">
+                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                  <XCircle className="w-5 h-5 text-text-muted" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">URL de Odoo</label>
+                      <input 
+                        type="text" 
+                        placeholder="https://tu-empresa.odoo.com"
+                        value={odooConfig.url}
+                        onChange={e => setOdooConfig(prev => ({ ...prev, url: e.target.value }))}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Base de Datos</label>
+                      <input 
+                        type="text" 
+                        placeholder="mi_base_de_datos"
+                        value={odooConfig.db}
+                        onChange={e => setOdooConfig(prev => ({ ...prev, db: e.target.value }))}
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Usuario / Email</label>
+                        <input 
+                          type="text" 
+                          placeholder="admin@empresa.com"
+                          value={odooConfig.username}
+                          onChange={e => setOdooConfig(prev => ({ ...prev, username: e.target.value }))}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Password / API Key</label>
+                        <input 
+                          type="password" 
+                          placeholder="••••••••"
+                          value={odooConfig.password}
+                          onChange={e => setOdooConfig(prev => ({ ...prev, password: e.target.value }))}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <button 
-                    type="submit"
-                    className="flex-1 bg-odoo-purple text-white font-bold py-2 rounded-md hover:bg-odoo-purple-light transition-colors text-sm"
+                    onClick={discoverCompanies}
+                    disabled={isDiscovering || !odooConfig.url || !odooConfig.password}
+                    className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
-                    Guardar Cambios
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-5 py-2 bg-gray-100 border border-border-light rounded-md text-xs text-text-muted font-bold hover:bg-gray-200 transition-colors"
-                  >
-                    Cancelar
+                    {isDiscovering ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                    {isDiscovering ? 'Conectando...' : 'Verificar Conexión y Listar Compañías'}
                   </button>
                 </div>
-              </form>
+
+                {availableCompanies.length > 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-3 pt-4 border-t border-border-light"
+                  >
+                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Seleccionar Compañía</label>
+                    <div className="grid grid-cols-1 gap-2">
+                      {availableCompanies.map(company => (
+                        <button
+                          key={company.id}
+                          onClick={() => setOdooConfig(prev => ({ ...prev, companyId: company.id }))}
+                          className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                            odooConfig.companyId === company.id 
+                              ? 'bg-odoo-purple/5 border-odoo-purple ring-1 ring-odoo-purple' 
+                              : 'bg-white border-border-light hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                              odooConfig.companyId === company.id ? 'bg-odoo-purple text-white' : 'bg-gray-100 text-text-muted'
+                            }`}>
+                              {company.name.charAt(0)}
+                            </div>
+                            <span className="text-sm font-semibold text-text-main">{company.name}</span>
+                          </div>
+                          {odooConfig.companyId === company.id && (
+                            <CheckCircle2 className="w-5 h-5 text-odoo-purple" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {configError && (
+                  <div className="p-4 bg-odoo-red/10 border border-odoo-red/20 rounded-xl flex items-center gap-3 text-odoo-red text-xs">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                    <span>{configError}</span>
+                  </div>
+                )}
+
+                {configSuccess && (
+                  <div className="p-4 bg-odoo-green/10 border border-odoo-green/20 rounded-xl flex items-center gap-3 text-odoo-green text-xs">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>{configSuccess}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+                <button 
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={saveOdooConfig}
+                  disabled={!odooConfig.companyId}
+                  className="flex-1 py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-purple/20"
+                >
+                  Guardar y Conectar
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

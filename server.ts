@@ -28,26 +28,62 @@ async function startServer() {
   });
 
   // Odoo Connection Helper
-  const getOdooConn = async () => {
-    const { ODOO_URL, ODOO_DB, ODOO_USERNAME, ODOO_PASSWORD, ODOO_COMPANY_ID } = process.env;
-    if (!ODOO_URL || !ODOO_DB || !ODOO_USERNAME || !ODOO_PASSWORD) {
+  const getOdooConn = async (customCfg?: any) => {
+    const cfg = customCfg || {
+      url: process.env.ODOO_URL,
+      db: process.env.ODOO_DB,
+      username: process.env.ODOO_USERNAME,
+      password: process.env.ODOO_PASSWORD,
+      companyId: parseInt(process.env.ODOO_COMPANY_ID || "1")
+    };
+
+    if (!cfg.url || !cfg.db || !cfg.username || !cfg.password) {
       return null;
     }
-    let url = ODOO_URL.trim();
+
+    let url = cfg.url.trim();
     if (url.endsWith('.')) url = url.slice(0, -1);
     if (url.endsWith('/')) url = url.slice(0, -1);
 
     return await getConnection({
+      ...cfg,
       url: url,
-      db: ODOO_DB.trim(),
-      username: ODOO_USERNAME.trim(),
-      password: ODOO_PASSWORD.trim(),
-      companyId: parseInt(ODOO_COMPANY_ID || "1"),
       debug: true
     });
   };
 
   // Odoo API Endpoints
+  app.post("/api/odoo/discover", async (req, res) => {
+    const { url, db, username, password } = req.body;
+    try {
+      // Intentar conectar sin companyId primero para listar compañías
+      // res.company es el modelo de compañías en Odoo
+      const conn = await getConnection({
+        url, db, username, password,
+        companyId: 1, // Dummy ID para la auth inicial
+        debug: true
+      });
+
+      const companies = await conn.searchRead('res.company', [], ['name', 'id']);
+      res.json({ status: "ok", companies });
+    } catch (err: any) {
+      res.status(401).json({ error: "Error de autenticación: " + err.message });
+    }
+  });
+
+  app.post("/api/odoo/config", async (req, res) => {
+    const { url, db, username, password, companyId } = req.body;
+    // En una app real, esto se guardaría en una base de datos por usuario/tenant.
+    // Para este demo, actualizamos las variables de entorno en memoria.
+    process.env.ODOO_URL = url;
+    process.env.ODOO_DB = db;
+    process.env.ODOO_USERNAME = username;
+    process.env.ODOO_PASSWORD = password;
+    process.env.ODOO_COMPANY_ID = companyId.toString();
+
+    res.json({ status: "ok", message: "Configuración guardada correctamente" });
+  });
+
   app.get("/api/odoo/test", async (req, res) => {
     try {
       const conn = await getOdooConn();
