@@ -187,6 +187,12 @@ export default function App() {
         }
       });
       if (!res.ok) return null;
+      
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        return null;
+      }
+
       return res.json();
     } catch (e) {
       return null;
@@ -207,6 +213,13 @@ export default function App() {
           password: odooConfig.password
         })
       });
+      
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`El servidor no respondió con JSON. Respuesta: ${text.substring(0, 100)}...`);
+      }
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al conectar con Odoo');
       setAvailableCompanies(data.companies);
@@ -229,6 +242,13 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(odooConfig)
       });
+
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`El servidor no respondió con JSON. Respuesta: ${text.substring(0, 100)}...`);
+      }
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al guardar configuración');
       setConfigSuccess('Configuración guardada correctamente');
