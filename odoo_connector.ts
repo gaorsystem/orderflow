@@ -68,7 +68,7 @@ function deserialize(xml) {
     const strMatch   = xml.match(/<name>faultString<\/name>\s*<value><string>([\s\S]*?)<\/string>/);
     const code = codeMatch ? parseInt(codeMatch[1]) : 0;
     const msg  = strMatch  ? strMatch[1] : 'Unknown Odoo fault';
-    const err  = new Error(`Odoo Fault [${code}]: ${msg.trim()}`);
+    const err  = new Error(`Odoo Fault [${code}]: ${msg.trim()}`) as any;
     err.faultCode = code;
     throw err;
   }
@@ -231,6 +231,10 @@ async function withRetry(fn, {
 // REQUEST QUEUE — Controla concurrencia
 // ─────────────────────────────────────────────
 class RequestQueue {
+  private concurrency: number;
+  private running: number;
+  private queue: any[];
+
   constructor(concurrency = 3) {
     this.concurrency = concurrency;
     this.running     = 0;
@@ -268,6 +272,8 @@ class RequestQueue {
 // CONNECTION POOL — Una entrada por compañía
 // ─────────────────────────────────────────────
 class OdooConnectionPool {
+  private _pool: Map<string, OdooConnection>;
+
   constructor() {
     this._pool = new Map(); // key: `${url}::${db}::${companyId}`
   }
@@ -316,6 +322,14 @@ const pool = new OdooConnectionPool();
 // ODOO CONNECTION — Una instancia autenticada
 // ─────────────────────────────────────────────
 class OdooConnection extends EventEmitter {
+  public cfg: any;
+  public uid: number | null;
+  public authenticated: boolean;
+  private _heartbeatTimer: any;
+  private _authPromise: Promise<void> | null;
+  private _queue: RequestQueue;
+  private _stats: any;
+
   /**
    * @param {object} cfg
    * @param {string}  cfg.url         — https://miodoo.com
@@ -492,7 +506,7 @@ class OdooConnection extends EventEmitter {
       context: {
         lang: 'es_PE',
         tz: 'America/Lima',
-        ...(kwargs.context || {}),
+        ...((kwargs as any).context || {}),
         allowed_company_ids: [this.cfg.companyId],
         company_id: this.cfg.companyId,
       },
@@ -572,7 +586,7 @@ class OdooConnection extends EventEmitter {
   // ── SHORTCUTS ────────────────────────────────
 
   /** Buscar y leer registros */
-  searchRead(model, domain = [], fields = [], opts = {}) {
+  searchRead(model: string, domain = [], fields = [], opts: any = {}) {
     return this.execute(model, 'search_read', [domain], {
       fields,
       limit  : opts.limit  || 0,
@@ -582,7 +596,7 @@ class OdooConnection extends EventEmitter {
   }
 
   /** Solo IDs */
-  search(model, domain = [], opts = {}) {
+  search(model: string, domain = [], opts: any = {}) {
     return this.execute(model, 'search', [domain], {
       limit  : opts.limit  || 0,
       offset : opts.offset || 0,
