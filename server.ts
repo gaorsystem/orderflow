@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -9,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
-  console.log("Starting server setup...");
+  console.log(`Starting server setup... (NODE_ENV: ${process.env.NODE_ENV || 'not set'})`);
   const app = express();
   const PORT = 3000;
 
@@ -197,8 +198,9 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Initializing Vite middleware...");
+  const isDev = process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test";
+  if (isDev) {
+    console.log("Initializing Vite middleware (Development Mode)...");
     try {
       const vite = await createViteServer({
         server: { 
