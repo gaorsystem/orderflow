@@ -2,13 +2,14 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import { getConnection } from "./odoo_connector";
+import { getConnection } from "./odoo_connector.js";
 import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
+  console.log("Starting server setup...");
   const app = express();
   const PORT = 3000;
 
@@ -205,8 +206,9 @@ async function startServer() {
     });
   }
 
+  console.log(`Attempting to listen on 0.0.0.0:${PORT}...`);
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server successfully running on http://localhost:${PORT}`);
   });
 }
 
