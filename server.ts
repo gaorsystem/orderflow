@@ -16,6 +16,14 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Request logging middleware
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api')) {
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    }
+    next();
+  });
+
   // Supabase Client (Server-side with Service Role)
   const getSupabase = () => {
     const url = process.env.VITE_SUPABASE_URL;
@@ -192,11 +200,6 @@ async function startServer() {
     res.json(data || []);
   });
 
-  console.log(`Attempting to listen on 0.0.0.0:${PORT}...`);
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server successfully running on port ${PORT}`);
-  });
-
   // Vite middleware for development
   const isDev = process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test";
   if (isDev) {
@@ -216,11 +219,23 @@ async function startServer() {
     }
   } else {
     // Serve static files in production
-    app.use(express.static(path.join(__dirname, "dist")));
+    const distPath = path.join(__dirname, "dist");
+    console.log(`Serving static files from: ${distPath}`);
+    app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
+      // Only serve index.html for non-API routes
+      if (!req.url.startsWith('/api')) {
+        res.sendFile(path.join(distPath, "index.html"));
+      } else {
+        res.status(404).json({ error: "API route not found" });
+      }
     });
   }
+
+  console.log(`Attempting to listen on 0.0.0.0:${PORT}...`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server successfully running on port ${PORT}`);
+  });
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
