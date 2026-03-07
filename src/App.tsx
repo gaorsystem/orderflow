@@ -143,11 +143,11 @@ export default function App() {
   const [data, setData] = useState<DashboardData>(getDemoData());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [odooConfig, setOdooConfig] = useState({
-    url: '',
-    db: '',
-    username: '',
-    password: '',
-    companyId: 0
+    url: 'https://marketperu.facturaclic.pe/',
+    db: 'marketperu_master',
+    username: 'luis@gaorsystem.com',
+    password: '06880ebb335d35f79967ee7b5abd13b08a94108f',
+    companyId: 1
   });
   const [availableCompanies, setAvailableCompanies] = useState<{id: number, name: string}[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
