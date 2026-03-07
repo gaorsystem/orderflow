@@ -1,0 +1,38 @@
+{
+  "name": "03_n8n_sync_workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "interval": 15,
+        "unit": "minutes"
+      },
+      "name": "Cron (15 min)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM odoo_products WHERE last_sync < NOW() - INTERVAL '15 minutes'"
+      },
+      "name": "Get Products to Sync",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [450, 300]
+    }
+  ],
+  "connections": {
+    "Cron (15 min)": {
+      "main": [
+        [
+          {
+            "node": "Get Products to Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

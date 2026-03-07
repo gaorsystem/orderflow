@@ -1,0 +1,56 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@100;200;300;400;500;600;700;800&display=swap');
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-display: 'Sora', sans-serif;
+  
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-odoo-purple: #5b21b6;
+  --color-odoo-purple-light: #7c3aed;
+  --color-odoo-purple-dark: #4c1d95;
+  
+  --color-odoo-green: #06b6d4;
+  --color-odoo-amber: #f59e0b;
+  --color-odoo-red: #ef4444;
+  --color-odoo-cyan: #06b6d4;
+  --color-odoo-blue: #3b82f6;
+  
+  --color-text-main: #1e1b4b;
+  --color-text-muted: #64748b;
+  --color-border-light: #e2e8f0;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-text-main font-sans text-sm min-h-screen;
+  }
+}
+
+@keyframes flow-anim {
+  0%   { left: -30%; }
+  100% { left: 100%; }
+}
+
+@keyframes flow-anim-rev {
+  0%   { left: 100%; }
+  100% { left: -30%; }
+}
+
+.animate-flow {
+  animation: flow-anim 2s linear infinite;
+}
+
+.animate-flow-rev {
+  animation: flow-anim-rev 2s linear infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s infinite;
+}
