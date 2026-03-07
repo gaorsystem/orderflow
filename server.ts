@@ -194,7 +194,10 @@ async function startServer() {
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { 
+        middlewareMode: true,
+        hmr: false // Disable HMR to avoid port conflicts
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -207,10 +210,26 @@ async function startServer() {
   }
 
   console.log(`Attempting to listen on 0.0.0.0:${PORT}...`);
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server successfully running on http://localhost:${PORT}`);
   });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. This is expected if the platform is restarting.`);
+    } else {
+      console.error('Server error:', err);
+    }
+  });
 }
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
 
 startServer().catch((err) => {
   console.error("Failed to start server:", err);
