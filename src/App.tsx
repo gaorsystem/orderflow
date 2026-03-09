@@ -72,6 +72,12 @@ interface DashboardData {
   is_odoo_connected?: boolean;
   active_sessions_count?: number;
   sync_status?: string;
+  odoo_server_config?: {
+    url: string;
+    db: string;
+    username: string;
+    companyId: number;
+  };
 }
 
 // --- Helpers ---
@@ -300,7 +306,8 @@ export default function App() {
           queue: Array.isArray(orders) ? orders : prev.queue,
           is_odoo_connected: !!odoo && !odoo.is_demo,
           active_sessions_count: stats?.active_sessions || 0,
-          sync_status: stats?.sync_status || "OK"
+          sync_status: stats?.sync_status || "OK",
+          odoo_server_config: odoo?.config || prev.odoo_server_config
         }));
         
         // If we got real data from server, we are not in demo mode
@@ -619,7 +626,7 @@ export default function App() {
                     🏭
                   </div>
                   <div className="text-xs font-bold text-text-main">Odoo 17</div>
-                  <StatusPill status={data.is_odoo_connected ? 'ok' : 'ok'} text={data.is_odoo_connected ? 'CONECTADO' : 'Sincronizado'} />
+                  <StatusPill status={data.is_odoo_connected ? 'ok' : 'pending'} text={data.is_odoo_connected ? 'CONECTADO' : 'DEMO / SIN CONEXIÓN'} />
                 </div>
               </div>
             </section>
@@ -677,6 +684,56 @@ export default function App() {
                 </div>
                 <div className="flex justify-between mt-1 text-[9px] text-text-muted font-medium">
                   <span>12h atrás</span><span>6h</span><span>ahora</span>
+                </div>
+              </div>
+            </section>
+
+            {/* Odoo Connection Details */}
+            <section className="bg-white border border-border-light rounded-lg p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Conexión Odoo</h2>
+                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${data.is_odoo_connected ? 'bg-odoo-green/10 text-odoo-green border border-odoo-green/20' : 'bg-odoo-amber/10 text-odoo-amber border border-odoo-amber/20'}`}>
+                  {data.is_odoo_connected ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                  {data.is_odoo_connected ? 'ACTIVA' : 'MODO DEMO'}
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex justify-between items-center py-2 border-b border-border-light/50">
+                    <span className="text-[10px] font-bold text-text-muted uppercase">Servidor</span>
+                    <span className="text-xs font-mono text-text-main truncate max-w-[150px]">
+                      {data.odoo_server_config?.url || odooConfig.url || 'No configurado'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-border-light/50">
+                    <span className="text-[10px] font-bold text-text-muted uppercase">Base de Datos</span>
+                    <span className="text-xs font-medium text-text-main">
+                      {data.odoo_server_config?.db || odooConfig.db || '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-border-light/50">
+                    <span className="text-[10px] font-bold text-text-muted uppercase">Usuario</span>
+                    <span className="text-xs font-medium text-text-main">
+                      {data.odoo_server_config?.username || odooConfig.username || '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-[10px] font-bold text-text-muted uppercase">Compañía ID</span>
+                    <span className="text-xs font-bold text-odoo-purple">
+                      {data.odoo_server_config?.companyId || odooConfig.companyId || '1'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button 
+                    onClick={loadAll}
+                    className="w-full py-2 bg-gray-50 hover:bg-gray-100 border border-border-light rounded-lg text-[10px] font-bold text-text-muted uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    Verificar ahora
+                  </button>
                 </div>
               </div>
             </section>

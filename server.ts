@@ -106,7 +106,19 @@ app.get("/api/odoo/stats", async (req, res) => {
     const conn = await getOdooConn();
     if (!conn) {
       console.log("Odoo not configured, returning demo data");
-      return res.json({ products: 247, partners: 89, pending: 2, confirmed: 14, is_demo: true });
+      return res.json({ 
+        products: 247, 
+        partners: 89, 
+        pending: 2, 
+        confirmed: 14, 
+        is_demo: true,
+        config: {
+          url: process.env.ODOO_URL,
+          db: process.env.ODOO_DB,
+          username: process.env.ODOO_USERNAME,
+          companyId: process.env.ODOO_COMPANY_ID
+        }
+      });
     }
     console.log("Fetching real Odoo stats...");
     const [products, partners] = await Promise.all([
@@ -120,10 +132,33 @@ app.get("/api/odoo/stats", async (req, res) => {
       const { count: c } = await supabase.from('pedidos_queue').select('*', { count: 'exact', head: true }).eq('estado', 'confirmed');
       pending = p || 0; confirmed = c || 0;
     }
-    res.json({ products, partners, pending, confirmed, is_demo: false });
+    res.json({ 
+      products, 
+      partners, 
+      pending, 
+      confirmed, 
+      is_demo: false,
+      config: {
+        url: process.env.ODOO_URL,
+        db: process.env.ODOO_DB,
+        username: process.env.ODOO_USERNAME,
+        companyId: process.env.ODOO_COMPANY_ID
+      }
+    });
   } catch (err: any) {
     console.error("Error in /api/odoo/stats:", err);
-    res.status(500).json({ error: err.message, products: 0, partners: 0, is_demo: true });
+    res.status(500).json({ 
+      error: err.message, 
+      products: 0, 
+      partners: 0, 
+      is_demo: true,
+      config: {
+        url: process.env.ODOO_URL,
+        db: process.env.ODOO_DB,
+        username: process.env.ODOO_USERNAME,
+        companyId: process.env.ODOO_COMPANY_ID
+      }
+    });
   }
 });
 
