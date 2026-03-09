@@ -17,7 +17,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Clock
+  Clock,
+  ShieldCheck,
+  Plus,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -62,6 +65,7 @@ interface Seller {
 interface DashboardData {
   products: number;
   partners: number;
+  employees: number;
   pending: number;
   confirmed: number;
   sessions: Session[];
@@ -95,6 +99,7 @@ const timeAgo = (dateStr: string | null) => {
 const getDemoData = (): DashboardData => ({
   products: 247,
   partners: 89,
+  employees: 12,
   pending: 2,
   confirmed: 14,
   sessions: [
@@ -148,6 +153,43 @@ export default function App() {
   
   const [data, setData] = useState<DashboardData>(getDemoData());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number}[]}>({
+    partner_id: 0,
+    lines: []
+  });
+
+  const createOdooOrder = async () => {
+    if (!newOrder.partner_id || newOrder.lines.length === 0) {
+      alert('Selecciona un cliente y al menos un producto');
+      return;
+    }
+    setIsCreatingOrder(true);
+    try {
+      const res = await fetch('/api/odoo/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner_id: newOrder.partner_id,
+          order_line: newOrder.lines.map(l => [0, 0, { product_id: l.product_id, product_uom_qty: l.qty }])
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert('Pedido creado exitosamente: ' + data.order_id);
+        setIsOrderModalOpen(false);
+        setNewOrder({ partner_id: 0, lines: [] });
+        loadAll();
+      } else {
+        alert('Error al crear pedido: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
   const [odooConfig, setOdooConfig] = useState({
     url: 'https://marketperu.facturaclic.pe/',
     db: 'marketperu_master',
@@ -156,6 +198,8 @@ export default function App() {
     companyId: 0
   });
   const [availableCompanies, setAvailableCompanies] = useState<{id: number, name: string}[]>([]);
+  const [accessResults, setAccessResults] = useState<any>(null);
+  const [isCheckingAccess, setIsCheckingAccess] = useState(false);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
@@ -164,6 +208,9 @@ export default function App() {
   const [isDemoMode, setIsDemoMode] = useState(!config.url);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo' | 'explorer'>('monitor');
+  const [explorerData, setExplorerData] = useState<{products: any[], partners: any[]}>({products: [], partners: []});
+  const [isExplorerLoading, setIsExplorerLoading] = useState(false);
 
   const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -211,6 +258,24 @@ export default function App() {
       return null;
     }
   }, [config]);
+
+  const checkAccess = async () => {
+    setIsCheckingAccess(true);
+    setAccessResults(null);
+    try {
+      const res = await fetch('/api/odoo/check-access');
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setAccessResults(data.results);
+      } else {
+        setConfigError(data.error || 'Error al verificar acceso');
+      }
+    } catch (e: any) {
+      setConfigError('Error de red al verificar acceso: ' + e.message);
+    } finally {
+      setIsCheckingAccess(false);
+    }
+  };
 
   const discoverCompanies = async () => {
     setIsDiscovering(true);
@@ -331,6 +396,7 @@ export default function App() {
           ...prev,
           products: odoo?.products || prev.products,
           partners: odoo?.partners || prev.partners,
+          employees: odoo?.employees || prev.employees,
           pending: stats?.pending_orders || 0,
           confirmed: odoo?.confirmed || 0,
           queue: Array.isArray(orders) ? orders : prev.queue,
@@ -373,6 +439,32 @@ export default function App() {
     setLastUpdate(new Date().toLocaleTimeString());
   }, [config, sbFetch]);
 
+  const loadExplorerData = async () => {
+    setIsExplorerLoading(true);
+    try {
+      const [pRes, ptRes] = await Promise.all([
+        fetch('/api/odoo/products'),
+        fetch('/api/odoo/partners')
+      ]);
+      const pData = await pRes.json();
+      const ptData = await ptRes.json();
+      setExplorerData({
+        products: pData.products || [],
+        partners: ptData.partners || []
+      });
+    } catch (e) {
+      console.error('Error loading explorer data:', e);
+    } finally {
+      setIsExplorerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'explorer') {
+      loadExplorerData();
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     loadAll();
     const interval = setInterval(loadAll, 30000);
@@ -394,8 +486,6 @@ export default function App() {
     localStorage.setItem('of_company', newConfig.company.toString());
     setIsModalOpen(false);
   };
-
-  const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo'>('monitor');
 
   if (!isAuthenticated) {
     return (
@@ -516,6 +606,12 @@ export default function App() {
               className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeTab === 'flujo' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
             >
               Flujo de Venta
+            </button>
+            <button 
+              onClick={() => setActiveTab('explorer')}
+              className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeTab === 'explorer' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+            >
+              Explorador Odoo
             </button>
           </nav>
         </div>
@@ -681,6 +777,10 @@ export default function App() {
                 <div className="bg-gray-50 border border-border-light rounded-lg p-3">
                   <div className="text-2xl font-extrabold text-odoo-blue leading-none mb-1">{data.partners.toLocaleString()}</div>
                   <div className="text-[10px] text-text-muted font-bold uppercase">Clientes sync</div>
+                </div>
+                <div className="bg-gray-50 border border-border-light rounded-lg p-3">
+                  <div className="text-2xl font-extrabold text-odoo-purple leading-none mb-1">{data.employees.toLocaleString()}</div>
+                  <div className="text-[10px] text-text-muted font-bold uppercase">Empleados Odoo</div>
                 </div>
                 <div className="bg-gray-50 border border-border-light rounded-lg p-3">
                   <div className={`text-2xl font-extrabold leading-none mb-1 ${data.pending > 0 ? 'text-odoo-amber' : 'text-odoo-green'}`}>{data.pending}</div>
@@ -1058,6 +1158,115 @@ export default function App() {
                       🚀 *¡Pedido Confirmado!*\nOrden Odoo: *S00042*
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'explorer' ? (
+          <div className="max-w-6xl mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-text-main font-display">Explorador de Datos Odoo</h2>
+                <p className="text-text-muted">Visualización en tiempo real de los datos sincronizados</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setIsOrderModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-odoo-green text-white rounded-lg text-sm font-bold hover:bg-odoo-green-dark transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Crear Pedido
+                </button>
+                <button 
+                  onClick={loadExplorerData}
+                  disabled={isExplorerLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold hover:bg-odoo-purple-dark transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isExplorerLoading ? 'animate-spin' : ''}`} />
+                  Sincronizar Ahora
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Products List */}
+              <div className="bg-white border border-border-light rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-border-light bg-gray-50 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
+                    <Package className="w-4 h-4 text-odoo-purple" />
+                    Productos ({explorerData.products.length})
+                  </h3>
+                </div>
+                <div className="overflow-y-auto max-h-[500px] custom-scrollbar">
+                  {isExplorerLoading ? (
+                    <div className="p-12 text-center text-text-muted">Cargando productos...</div>
+                  ) : explorerData.products.length === 0 ? (
+                    <div className="p-12 text-center text-text-muted">No se encontraron productos</div>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-white border-b border-border-light shadow-sm">
+                        <tr>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider">Código</th>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider">Nombre</th>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider text-right">Precio</th>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider text-right">Stock</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-light/40">
+                        {explorerData.products.map((p, i) => (
+                          <tr key={i} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-odoo-purple">{p.default_code || '—'}</td>
+                            <td className="px-4 py-3 font-bold text-text-main">{p.name}</td>
+                            <td className="px-4 py-3 text-right font-semibold">S/ {p.list_price?.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right">
+                              <span className={`px-2 py-0.5 rounded-full font-bold ${p.qty_available > 0 ? 'bg-odoo-green/10 text-odoo-green' : 'bg-odoo-red/10 text-odoo-red'}`}>
+                                {p.qty_available || 0}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Partners List */}
+              <div className="bg-white border border-border-light rounded-xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-border-light bg-gray-50 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
+                    <Users className="w-4 h-4 text-odoo-purple" />
+                    Clientes ({explorerData.partners.length})
+                  </h3>
+                </div>
+                <div className="overflow-y-auto max-h-[500px] custom-scrollbar">
+                  {isExplorerLoading ? (
+                    <div className="p-12 text-center text-text-muted">Cargando clientes...</div>
+                  ) : explorerData.partners.length === 0 ? (
+                    <div className="p-12 text-center text-text-muted">No se encontraron clientes</div>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-white border-b border-border-light shadow-sm">
+                        <tr>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider">Nombre</th>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider">Contacto</th>
+                          <th className="px-4 py-3 font-bold text-text-muted uppercase tracking-wider">Ciudad</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-light/40">
+                        {explorerData.partners.map((p, i) => (
+                          <tr key={i} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-text-main">{p.name}</div>
+                              <div className="text-[10px] text-text-muted">{p.email || 'Sin email'}</div>
+                            </td>
+                            <td className="px-4 py-3 text-text-muted font-medium">{p.phone || '—'}</td>
+                            <td className="px-4 py-3 text-text-muted uppercase font-bold">{p.city || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             </div>
@@ -1717,43 +1926,70 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                 </div>
 
                 {availableCompanies.length > 0 && (
-                  <motion.div 
-                    key="company-list"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="space-y-3 pt-4 border-t border-border-light"
-                  >
-                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Seleccionar Compañía</label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {availableCompanies.map(company => {
-                        if (!company || !company.id) return null;
-                        return (
-                          <button
-                            key={company.id}
-                            onClick={() => setOdooConfig(prev => ({ ...prev, companyId: company.id }))}
-                            className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                              odooConfig.companyId === company.id 
-                                ? 'bg-odoo-purple/5 border-odoo-purple ring-1 ring-odoo-purple' 
-                                : 'bg-white border-border-light hover:border-gray-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                                odooConfig.companyId === company.id ? 'bg-odoo-purple text-white' : 'bg-gray-100 text-text-muted'
-                              }`}>
-                                {company.name ? company.name.charAt(0) : '?'}
+                  <div className="mt-4 space-y-4">
+                    <motion.div 
+                      key="company-list"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="space-y-3 pt-4 border-t border-border-light"
+                    >
+                      <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Seleccionar Compañía</label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {availableCompanies.map(company => {
+                          if (!company || !company.id) return null;
+                          return (
+                            <button
+                              key={company.id}
+                              onClick={() => setOdooConfig(prev => ({ ...prev, companyId: company.id }))}
+                              className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                                odooConfig.companyId === company.id 
+                                  ? 'bg-odoo-purple/5 border-odoo-purple ring-1 ring-odoo-purple' 
+                                  : 'bg-white border-border-light hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                                  odooConfig.companyId === company.id ? 'bg-odoo-purple text-white' : 'bg-gray-100 text-text-muted'
+                                }`}>
+                                  {company.name ? company.name.charAt(0) : '?'}
+                                </div>
+                                <span className="text-sm font-semibold text-text-main">{company.name || 'Sin nombre'}</span>
                               </div>
-                              <span className="text-sm font-semibold text-text-main">{company.name || 'Sin nombre'}</span>
+                              {odooConfig.companyId === company.id && (
+                                <CheckCircle2 className="w-5 h-5 text-odoo-purple" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+
+                    <button 
+                      onClick={checkAccess}
+                      disabled={isCheckingAccess || !odooConfig.companyId}
+                      className="w-full py-2.5 bg-white border border-border-light text-text-main rounded-xl text-xs font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isCheckingAccess ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                      Verificar Permisos de Modelos
+                    </button>
+
+                    {accessResults && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(accessResults).map(([model, res]: [string, any]) => (
+                          <div key={model} className={`p-2 rounded-lg border text-[10px] flex flex-col gap-1 ${res.access ? 'bg-odoo-green/5 border-odoo-green/20' : 'bg-odoo-red/5 border-odoo-red/20'}`}>
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold truncate">{model}</span>
+                              {res.access ? <CheckCircle2 className="w-3 h-3 text-odoo-green" /> : <AlertTriangle className="w-3 h-3 text-odoo-red" />}
                             </div>
-                            {odooConfig.companyId === company.id && (
-                              <CheckCircle2 className="w-5 h-5 text-odoo-purple" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
+                            <span className="text-text-muted">
+                              {res.access ? `${res.count} registros` : 'Sin acceso'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {configError && (
@@ -1784,6 +2020,127 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                   className="flex-1 py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-purple/20"
                 >
                   Guardar y Conectar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {isOrderModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-odoo-green/10 flex items-center justify-center text-odoo-green">
+                    <Plus className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-text-main font-display">Crear Nuevo Pedido</h3>
+                    <p className="text-xs text-text-muted">Generar orden de venta directamente en Odoo</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                  <XCircle className="w-6 h-6 text-text-muted" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                {/* Partner Selection */}
+                <div className="space-y-3">
+                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Cliente (Partner)</label>
+                  <select 
+                    value={newOrder.partner_id}
+                    onChange={(e) => setNewOrder(prev => ({ ...prev, partner_id: parseInt(e.target.value) }))}
+                    className="w-full px-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                  >
+                    <option value={0}>Seleccionar un cliente...</option>
+                    {explorerData.partners.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Product Selection */}
+                <div className="space-y-3">
+                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Agregar Productos</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {explorerData.products.slice(0, 5).map(p => (
+                      <div key={p.id} className="flex items-center justify-between p-3 border border-border-light rounded-xl hover:bg-gray-50 transition-all">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-text-main">{p.name}</span>
+                          <span className="text-[10px] text-text-muted">S/ {p.list_price?.toFixed(2)} · Stock: {p.qty_available}</span>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            const existing = newOrder.lines.find(l => l.product_id === p.id);
+                            if (existing) {
+                              setNewOrder(prev => ({
+                                ...prev,
+                                lines: prev.lines.map(l => l.product_id === p.id ? { ...l, qty: l.qty + 1 } : l)
+                              }));
+                            } else {
+                              setNewOrder(prev => ({
+                                ...prev,
+                                lines: [...prev.lines, { product_id: p.id, qty: 1 }]
+                              }));
+                            }
+                          }}
+                          className="p-1.5 bg-odoo-purple/10 text-odoo-purple rounded-lg hover:bg-odoo-purple hover:text-white transition-all"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Order Lines */}
+                {newOrder.lines.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-border-light">
+                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resumen del Pedido</label>
+                    <div className="space-y-2">
+                      {newOrder.lines.map((l, i) => {
+                        const product = explorerData.products.find(p => p.id === l.product_id);
+                        return (
+                          <div key={i} className="flex items-center justify-between p-3 bg-odoo-purple/5 rounded-xl border border-odoo-purple/10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-odoo-purple text-white flex items-center justify-center text-xs font-bold">
+                                {l.qty}
+                              </div>
+                              <span className="text-xs font-bold text-text-main">{product?.name}</span>
+                            </div>
+                            <button 
+                              onClick={() => setNewOrder(prev => ({ ...prev, lines: prev.lines.filter((_, idx) => idx !== i) }))}
+                              className="text-odoo-red hover:underline text-[10px] font-bold"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+                <button 
+                  onClick={() => setIsOrderModalOpen(false)}
+                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={createOdooOrder}
+                  disabled={isCreatingOrder || !newOrder.partner_id || newOrder.lines.length === 0}
+                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-green/20 flex items-center justify-center gap-2"
+                >
+                  {isCreatingOrder ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+                  Confirmar y Enviar a Odoo
                 </button>
               </div>
             </motion.div>

@@ -72,7 +72,27 @@ app.post("/api/odoo/discover", async (req, res) => {
       debug: true
     });
     console.log("Connection established, searching for companies...");
-    const companies = await conn.searchRead('res.company', [], ['name', 'id']);
+    let companies = [];
+    try {
+      companies = await conn.searchRead('res.company', [], ['name', 'id']);
+    } catch (e) {
+      console.warn("Could not search res.company, trying to get user's company...");
+    }
+
+    if (companies.length === 0) {
+      // Try to get the company of the current user
+      try {
+        const userData = await conn.read('res.users', [conn.uid!], ['company_id']);
+        if (userData && userData[0] && userData[0].company_id) {
+          const [compId, compName] = userData[0].company_id;
+          companies = [{ id: compId, name: compName }];
+          console.log("Found user's company:", companies);
+        }
+      } catch (e) {
+        console.error("Failed to get user's company:", e);
+      }
+    }
+
     console.log(`Found ${companies.length} companies:`, companies);
     res.json({ status: "ok", companies });
   } catch (err: any) {
@@ -91,11 +111,64 @@ app.post("/api/odoo/config", async (req, res) => {
   res.json({ status: "ok", message: "Configuración guardada correctamente" });
 });
 
-app.get("/api/odoo/test", async (req, res) => {
+app.get("/api/odoo/products", async (req, res) => {
   try {
     const conn = await getOdooConn();
-    if (!conn) return res.status(400).json({ error: "Odoo credentials not configured" });
-    res.json({ status: "ok", stats: conn.stats() });
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const products = await conn.searchRead('product.product', [['sale_ok', '=', true]], ['name', 'list_price', 'default_code', 'qty_available'], { limit: 50 });
+    res.json({ status: "ok", products });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/odoo/partners", async (req, res) => {
+  try {
+    const conn = await getOdooConn();
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const partners = await conn.searchRead('res.partner', [], ['name', 'email', 'phone', 'city'], { limit: 50 });
+    res.json({ status: "ok", partners });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/odoo/check-access", async (req, res) => {
+  try {
+    const conn = await getOdooConn();
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+
+    const models = ['res.partner', 'product.product', 'hr.employee', 'sale.order'];
+    const results: any = {};
+
+    for (const model of models) {
+      try {
+        const count = await conn.searchCount(model, []);
+        results[model] = { access: true, count };
+      } catch (e: any) {
+        results[model] = { access: false, error: e.message };
+      }
+    }
+
+    res.json({ status: "ok", results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/odoo/orders", async (req, res) => {
+  const { partner_id, order_line } = req.body;
+  try {
+    const conn = await getOdooConn();
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+
+    // order_line should be an array of [0, 0, { product_id, product_uom_qty, price_unit }]
+    const orderId = await conn.create('sale.order', {
+      partner_id,
+      order_line
+    });
+
+    res.json({ status: "ok", order_id: orderId });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -123,12 +196,13 @@ app.get("/api/odoo/stats", async (req, res) => {
     console.log(`Fetching real Odoo stats for company ${process.env.ODOO_COMPANY_ID}...`);
     
     // Use a more relaxed filter for partners if customer_rank fails or returns 0
-    const [products, partners] = await Promise.all([
+    const [products, partners, employees] = await Promise.all([
       conn.searchCount('product.product', [['sale_ok', '=', true]]),
-      conn.searchCount('res.partner', []) // Get total partners first to verify connection
+      conn.searchCount('res.partner', []), // Get total partners first to verify connection
+      conn.searchCount('hr.employee', [])
     ]);
     
-    console.log(`Odoo stats: ${products} products, ${partners} partners`);
+    console.log(`Odoo stats: ${products} products, ${partners} partners, ${employees} employees`);
     const supabase = getSupabase();
     let pending = 0, confirmed = 0;
     if (supabase) {
@@ -139,6 +213,7 @@ app.get("/api/odoo/stats", async (req, res) => {
     res.json({ 
       products, 
       partners, 
+      employees,
       pending, 
       confirmed, 
       is_demo: false,
@@ -155,6 +230,7 @@ app.get("/api/odoo/stats", async (req, res) => {
       error: err.message, 
       products: 0, 
       partners: 0, 
+      employees: 0,
       is_demo: true,
       config: {
         url: process.env.ODOO_URL,
