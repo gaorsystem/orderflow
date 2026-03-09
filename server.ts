@@ -142,7 +142,23 @@ app.post("/api/odoo/discover", async (req, res) => {
     console.log("Connection established, searching for companies...");
     let companies = [];
     try {
-      companies = await conn.searchRead('res.company', [], ['name']);
+      const rawCompanies = await conn.searchRead('res.company', [], ['name']);
+      // Odoo XML-RPC sometimes returns arrays of objects, sometimes arrays of arrays
+      if (Array.isArray(rawCompanies)) {
+        companies = rawCompanies.map((c: any) => {
+          if (Array.isArray(c)) {
+            // Format: [id, name]
+            return { id: c[0], name: c[1] || `Compañía ${c[0]}` };
+          } else if (typeof c === 'object' && c !== null) {
+            // Format: { id: 1, name: "Company Name" }
+            // Sometimes it returns { id: 1, name: [1, "Company Name"] }
+            const id = c.id;
+            const name = Array.isArray(c.name) ? c.name[1] : c.name;
+            return { id, name: name || `Compañía ${id}` };
+          }
+          return null;
+        }).filter(Boolean);
+      }
     } catch (e) {
       console.warn("Could not search res.company, trying to get user's company...");
     }
