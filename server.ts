@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { getConnection } from "./odoo_connector.js";
@@ -148,18 +147,24 @@ app.get("/api/recent-orders", async (req, res) => {
 });
 
 // --- Server Startup ---
-async function startServer() {
+let isInitialized = false;
+export async function initializeServer() {
+  if (isInitialized) return;
+
   const isDev = process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test";
+  const isVercel = !!process.env.VERCEL;
   
-  if (isDev && !process.env.VERCEL) {
+  if (isDev && !isVercel) {
     console.log("Initializing Vite middleware...");
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(__dirname, "dist");
+    // En Vercel o Producción, servimos estáticos
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       if (!req.url.startsWith('/api')) {
@@ -170,13 +175,16 @@ async function startServer() {
     });
   }
 
-  if (!process.env.VERCEL) {
+  isInitialized = true;
+}
+
+// Start listener only if not in Vercel
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  initializeServer().then(() => {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on port ${PORT}`);
     });
-  }
+  }).catch(console.error);
 }
-
-startServer().catch(console.error);
 
 export default app;
