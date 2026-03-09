@@ -143,21 +143,29 @@ app.post("/api/odoo/discover", async (req, res) => {
     let companies = [];
     try {
       const rawCompanies = await conn.searchRead('res.company', [], ['name']);
-      // Odoo XML-RPC sometimes returns arrays of objects, sometimes arrays of arrays
+      console.log("Raw companies from Odoo:", JSON.stringify(rawCompanies));
+      
       if (Array.isArray(rawCompanies)) {
-        companies = rawCompanies.map((c: any) => {
-          if (Array.isArray(c)) {
-            // Format: [id, name]
-            return { id: c[0], name: c[1] || `Compañía ${c[0]}` };
-          } else if (typeof c === 'object' && c !== null) {
-            // Format: { id: 1, name: "Company Name" }
-            // Sometimes it returns { id: 1, name: [1, "Company Name"] }
-            const id = c.id;
-            const name = Array.isArray(c.name) ? c.name[1] : c.name;
-            return { id, name: name || `Compañía ${id}` };
-          }
-          return null;
-        }).filter(Boolean);
+        // Handle the weird format: [{}, "Name", {}, "Name2"]
+        if (rawCompanies.length > 0 && typeof rawCompanies[0] === 'object' && Object.keys(rawCompanies[0]).length === 0) {
+           let idCounter = 1;
+           for (let i = 0; i < rawCompanies.length; i++) {
+             if (typeof rawCompanies[i] === 'string') {
+               companies.push({ id: idCounter++, name: rawCompanies[i] });
+             }
+           }
+        } else {
+          companies = rawCompanies.map((c: any) => {
+            if (Array.isArray(c)) {
+              return { id: c[0], name: c[1] || `Compañía ${c[0]}` };
+            } else if (typeof c === 'object' && c !== null) {
+              const id = c.id;
+              const name = Array.isArray(c.name) ? c.name[1] : c.name;
+              if (id) return { id, name: name || `Compañía ${id}` };
+            }
+            return null;
+          }).filter(Boolean);
+        }
       }
     } catch (e) {
       console.warn("Could not search res.company, trying to get user's company...");
