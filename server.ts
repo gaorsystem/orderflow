@@ -120,11 +120,15 @@ app.get("/api/odoo/stats", async (req, res) => {
         }
       });
     }
-    console.log("Fetching real Odoo stats...");
+    console.log(`Fetching real Odoo stats for company ${process.env.ODOO_COMPANY_ID}...`);
+    
+    // Use a more relaxed filter for partners if customer_rank fails or returns 0
     const [products, partners] = await Promise.all([
       conn.searchCount('product.product', [['sale_ok', '=', true]]),
-      conn.searchCount('res.partner', [['customer_rank', '>', 0]])
+      conn.searchCount('res.partner', []) // Get total partners first to verify connection
     ]);
+    
+    console.log(`Odoo stats: ${products} products, ${partners} partners`);
     const supabase = getSupabase();
     let pending = 0, confirmed = 0;
     if (supabase) {

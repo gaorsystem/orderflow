@@ -215,7 +215,11 @@ export default function App() {
   const discoverCompanies = async () => {
     setIsDiscovering(true);
     setConfigError(null);
+    setConfigSuccess(null);
+    setAvailableCompanies([]);
+    
     try {
+      console.log('Iniciando descubrimiento de compañías...');
       const res = await fetch('/api/odoo/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -228,32 +232,47 @@ export default function App() {
       });
       
       const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
         const text = await res.text();
-        throw new Error(`El servidor no respondió con JSON. Respuesta: ${text.substring(0, 100)}...`);
+        throw new Error(`Respuesta no válida del servidor: ${text.substring(0, 100)}`);
       }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al conectar con Odoo');
-      const companies = Array.isArray(data.companies) ? data.companies : [];
+      if (!res.ok) {
+        throw new Error(data?.error || `Error ${res.status}: Falló la conexión con Odoo`);
+      }
+      
+      const companies = Array.isArray(data?.companies) ? data.companies.filter((c: any) => c && typeof c === 'object' && c.id) : [];
+      console.log('Compañías encontradas:', companies);
+      
       setAvailableCompanies(companies);
       
       if (companies.length === 0) {
-        setConfigError('No se encontraron compañías en esta base de datos.');
+        setConfigError('Conexión exitosa, pero no se encontraron compañías accesibles para este usuario.');
       } else {
-        setConfigSuccess(`Conexión exitosa. Se encontraron ${companies.length} compañías.`);
+        setConfigSuccess(`¡Conexión exitosa! Se encontraron ${companies.length} compañías.`);
+        // Si solo hay una, seleccionarla automáticamente
         if (companies.length === 1) {
           setOdooConfig(prev => ({ ...prev, companyId: companies[0].id }));
         }
       }
     } catch (err: any) {
-      setConfigError(err.message);
+      console.error('Error en discoverCompanies:', err);
+      setConfigError(err?.message || 'Error desconocido al conectar con Odoo');
     } finally {
       setIsDiscovering(false);
     }
   };
 
   const saveOdooConfig = async () => {
+    if (!odooConfig.companyId) {
+      setConfigError('Por favor, selecciona una compañía antes de guardar.');
+      return;
+    }
+    
     setConfigError(null);
     setConfigSuccess(null);
     try {
@@ -262,20 +281,31 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(odooConfig)
       });
-
+      
       const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
         const text = await res.text();
-        throw new Error(`El servidor no respondió con JSON. Respuesta: ${text.substring(0, 100)}...`);
+        throw new Error(`Respuesta no válida del servidor: ${text.substring(0, 100)}`);
       }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al guardar configuración');
-      setConfigSuccess('Configuración guardada correctamente');
-      setTimeout(() => setIsModalOpen(false), 1500);
-      loadAll();
+      if (!res.ok) throw new Error(data?.error || 'Error al guardar la configuración');
+      
+      setConfigSuccess('¡Configuración guardada! Reiniciando conexión...');
+      
+      // Guardar localmente también para persistencia en el navegador
+      localStorage.setItem('odoo_config', JSON.stringify(odooConfig));
+      
+      setTimeout(() => {
+        setIsModalOpen(false);
+        loadAll();
+      }, 1500);
     } catch (err: any) {
-      setConfigError(err.message);
+      console.error('Error en saveOdooConfig:', err);
+      setConfigError(err?.message || 'Error al guardar la configuración');
     }
   };
   const loadAll = useCallback(async () => {
@@ -1596,10 +1626,11 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
       </main>
 
       {/* Config Modal */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {isModalOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
             <motion.div 
+              key="modal-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1607,6 +1638,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
             <motion.div 
+              key="modal-content"
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -1686,35 +1718,40 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
 
                 {availableCompanies.length > 0 && (
                   <motion.div 
+                    key="company-list"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
                     className="space-y-3 pt-4 border-t border-border-light"
                   >
                     <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Seleccionar Compañía</label>
                     <div className="grid grid-cols-1 gap-2">
-                      {availableCompanies.map(company => (
-                        <button
-                          key={company.id}
-                          onClick={() => setOdooConfig(prev => ({ ...prev, companyId: company.id }))}
-                          className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                            odooConfig.companyId === company.id 
-                              ? 'bg-odoo-purple/5 border-odoo-purple ring-1 ring-odoo-purple' 
-                              : 'bg-white border-border-light hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                              odooConfig.companyId === company.id ? 'bg-odoo-purple text-white' : 'bg-gray-100 text-text-muted'
-                            }`}>
-                              {company.name.charAt(0)}
+                      {availableCompanies.map(company => {
+                        if (!company || !company.id) return null;
+                        return (
+                          <button
+                            key={company.id}
+                            onClick={() => setOdooConfig(prev => ({ ...prev, companyId: company.id }))}
+                            className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                              odooConfig.companyId === company.id 
+                                ? 'bg-odoo-purple/5 border-odoo-purple ring-1 ring-odoo-purple' 
+                                : 'bg-white border-border-light hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                                odooConfig.companyId === company.id ? 'bg-odoo-purple text-white' : 'bg-gray-100 text-text-muted'
+                              }`}>
+                                {company.name ? company.name.charAt(0) : '?'}
+                              </div>
+                              <span className="text-sm font-semibold text-text-main">{company.name || 'Sin nombre'}</span>
                             </div>
-                            <span className="text-sm font-semibold text-text-main">{company.name}</span>
-                          </div>
-                          {odooConfig.companyId === company.id && (
-                            <CheckCircle2 className="w-5 h-5 text-odoo-purple" />
-                          )}
-                        </button>
-                      ))}
+                            {odooConfig.companyId === company.id && (
+                              <CheckCircle2 className="w-5 h-5 text-odoo-purple" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </motion.div>
                 )}
