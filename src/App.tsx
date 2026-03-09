@@ -96,34 +96,17 @@ const timeAgo = (dateStr: string | null) => {
   return `${Math.floor(s / 86400)}d`;
 };
 
-const getDemoData = (): DashboardData => ({
-  products: 247,
-  partners: 89,
-  employees: 12,
-  pending: 2,
-  confirmed: 14,
-  sessions: [
-    { phone: '+51987654321', estado: 'agregando_productos', partner_nombre: 'Bodega Los Andes', updated_at: new Date(Date.now() - 120000).toISOString() },
-    { phone: '+51976543210', estado: 'confirmando_cliente', partner_nombre: null, updated_at: new Date(Date.now() - 45000).toISOString() },
-  ],
-  queue: [
-    { id: 'demo1', odoo_order_ref: 'S/0041', partner_nombre: 'Distribuidora Norte SAC', total: 1840.00, estado: 'confirmed', created_at: new Date(Date.now() - 600000).toISOString() },
-    { id: 'demo2', odoo_order_ref: null, partner_nombre: 'Bodega Los Andes', total: 320.50, estado: 'pending', created_at: new Date(Date.now() - 120000).toISOString() },
-    { id: 'demo3', odoo_order_ref: 'S/0040', partner_nombre: 'Supermercado El Sol', total: 5200.00, estado: 'confirmed', created_at: new Date(Date.now() - 3600000).toISOString() },
-  ],
-  syncLog: [
-    { tipo: 'products', registros_sync: 247, estado: 'ok', company_id: 1, created_at: new Date(Date.now() - 300000).toISOString() },
-    { tipo: 'partners', registros_sync: 89, estado: 'ok', company_id: 1, created_at: new Date(Date.now() - 300000).toISOString() },
-    { tipo: 'products', registros_sync: 247, estado: 'ok', company_id: 1, created_at: new Date(Date.now() - 1200000).toISOString() },
-    { tipo: 'partners', registros_sync: 88, estado: 'ok', company_id: 1, created_at: new Date(Date.now() - 1200000).toISOString() },
-    { tipo: 'products', registros_sync: 0, estado: 'error', company_id: 1, created_at: new Date(Date.now() - 7200000).toISOString() },
-  ],
-  vendedores: [
-    { nombre: 'Juan Pérez', whatsapp_phone: '+51987654321', activo: true },
-    { nombre: 'María López', whatsapp_phone: '+51976543210', activo: true },
-    { nombre: 'Carlos Ríos', whatsapp_phone: '+51965432100', activo: false },
-  ],
-  spark: [0, 1, 0, 2, 3, 1, 4, 2, 3, 5, 2, 1]
+const getEmptyData = (): DashboardData => ({
+  products: 0,
+  partners: 0,
+  employees: 0,
+  pending: 0,
+  confirmed: 0,
+  sessions: [],
+  queue: [],
+  syncLog: [],
+  vendedores: [],
+  spark: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 });
 
 // --- Components ---
@@ -151,7 +134,7 @@ export default function App() {
     company: parseInt(localStorage.getItem('of_company') || '1')
   }));
   
-  const [data, setData] = useState<DashboardData>(getDemoData());
+  const [data, setData] = useState<DashboardData>(getEmptyData());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
@@ -205,7 +188,6 @@ export default function App() {
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(!config.url);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo' | 'explorer'>('monitor');
@@ -405,11 +387,6 @@ export default function App() {
           sync_status: stats?.sync_status || "OK",
           odoo_server_config: odoo?.config || prev.odoo_server_config
         }));
-        
-        // If we got real data from server, we are not in demo mode
-        if (!odoo.is_demo) {
-          setIsDemoMode(false);
-        }
       }
     } catch (e) {
       console.error('Error loading proxy data:', e);
@@ -656,16 +633,6 @@ export default function App() {
       <main className="flex-1 p-7">
         {activeTab === 'monitor' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-auto">
-            {/* Demo Banner */}
-            {isDemoMode && (
-              <div className="col-span-full bg-odoo-amber/10 border border-odoo-amber/30 rounded-lg p-4 flex items-center gap-3 text-odoo-amber text-[11px]">
-                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                <span>
-                  No hay conexión configurada con <strong>Odoo</strong>. Los datos mostrados son de <strong>demostración</strong>. Haz clic en el icono de <strong>engranaje</strong> para conectar con tu base de datos real de <strong>GaorSystem Perú</strong>.
-                </span>
-              </div>
-            )}
-            
             {/* Architecture Diagram */}
             <section className="col-span-full bg-white border border-border-light rounded-lg p-6 shadow-sm">
               <div className="flex items-center justify-between mb-8">
@@ -731,11 +698,11 @@ export default function App() {
                 {/* Node: Supabase */}
                 <div className="flex flex-col items-center gap-3 min-w-[130px]">
                   <div className="w-14 h-14 rounded-xl bg-odoo-green/10 border border-odoo-green/20 flex items-center justify-center text-2xl relative group transition-transform hover:scale-105">
-                    <div className={`absolute -inset-1 rounded-[14px] border-2 ${isDemoMode ? 'border-odoo-amber' : 'border-odoo-green'}`} />
+                    <div className="absolute -inset-1 rounded-[14px] border-2 border-odoo-green" />
                     🗄
                   </div>
                   <div className="text-xs font-bold text-text-main">Supabase</div>
-                  <StatusPill status={isDemoMode ? 'pending' : 'ok'} text={isDemoMode ? 'Demo' : 'Conectado'} />
+                  <StatusPill status="ok" text="Conectado" />
                 </div>
 
                 {/* Connector */}

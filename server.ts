@@ -178,13 +178,14 @@ app.get("/api/odoo/stats", async (req, res) => {
   try {
     const conn = await getOdooConn();
     if (!conn) {
-      console.log("Odoo not configured, returning demo data");
+      console.log("Odoo not configured, returning empty data");
       return res.json({ 
-        products: 247, 
-        partners: 89, 
-        pending: 2, 
-        confirmed: 14, 
-        is_demo: true,
+        products: 0, 
+        partners: 0, 
+        employees: 0,
+        pending: 0, 
+        confirmed: 0, 
+        is_demo: false,
         config: {
           url: process.env.ODOO_URL,
           db: process.env.ODOO_DB,
@@ -195,11 +196,20 @@ app.get("/api/odoo/stats", async (req, res) => {
     }
     console.log(`Fetching real Odoo stats for company ${process.env.ODOO_COMPANY_ID}...`);
     
-    // Use a more relaxed filter for partners if customer_rank fails or returns 0
+    // Use individual try-catch for each count to avoid failing the whole request if one model doesn't exist
+    const getCount = async (model: string, domain: any[] = []) => {
+      try {
+        return await conn.searchCount(model, domain);
+      } catch (e) {
+        console.warn(`Could not get count for ${model}:`, e);
+        return 0;
+      }
+    };
+
     const [products, partners, employees] = await Promise.all([
-      conn.searchCount('product.product', [['sale_ok', '=', true]]),
-      conn.searchCount('res.partner', []), // Get total partners first to verify connection
-      conn.searchCount('hr.employee', [])
+      getCount('product.product', [['sale_ok', '=', true]]),
+      getCount('res.partner', []),
+      getCount('hr.employee', [])
     ]);
     
     console.log(`Odoo stats: ${products} products, ${partners} partners, ${employees} employees`);
@@ -231,7 +241,7 @@ app.get("/api/odoo/stats", async (req, res) => {
       products: 0, 
       partners: 0, 
       employees: 0,
-      is_demo: true,
+      is_demo: false,
       config: {
         url: process.env.ODOO_URL,
         db: process.env.ODOO_DB,
@@ -245,7 +255,7 @@ app.get("/api/odoo/stats", async (req, res) => {
 app.get("/api/stats", async (req, res) => {
   const supabase = getSupabase();
   if (!supabase) {
-    return res.json({ active_sessions: 12, pending_orders: 5, sync_status: "OK", last_sync: new Date().toISOString() });
+    return res.json({ active_sessions: 0, pending_orders: 0, sync_status: "ERROR", last_sync: null });
   }
   try {
     const [sessions, pending, logs] = await Promise.all([
