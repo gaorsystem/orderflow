@@ -39,7 +39,7 @@ const getOdooConn = async (customCfg?: any) => {
     db: process.env.ODOO_DB,
     username: process.env.ODOO_USERNAME,
     password: process.env.ODOO_PASSWORD,
-    companyId: parseInt(process.env.ODOO_COMPANY_ID || "1")
+    companyIds: process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : [parseInt(process.env.ODOO_COMPANY_ID || "1")]
   };
 
   if (!cfg.url || !cfg.db || !cfg.username || !cfg.password) {
@@ -194,12 +194,14 @@ app.post("/api/odoo/discover", async (req, res) => {
 });
 
 app.post("/api/odoo/config", async (req, res) => {
-  const { url, db, username, password, companyId } = req.body;
+  const { url, db, username, password, companyIds } = req.body;
   process.env.ODOO_URL = url;
   process.env.ODOO_DB = db;
   process.env.ODOO_USERNAME = username;
   process.env.ODOO_PASSWORD = password;
-  process.env.ODOO_COMPANY_ID = companyId.toString();
+  if (companyIds && Array.isArray(companyIds)) {
+    process.env.ODOO_COMPANY_IDS = companyIds.join(',');
+  }
   res.json({ status: "ok", message: "Configuración guardada correctamente" });
 });
 

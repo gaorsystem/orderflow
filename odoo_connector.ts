@@ -264,8 +264,8 @@ class OdooConnection extends EventEmitter {
 
   constructor(cfg: any) {
     super();
-    if (!cfg.url || !cfg.db || !cfg.username || !cfg.password || !cfg.companyId) {
-      throw new Error('OdooConnection requiere: url, db, username, password, companyId');
+    if (!cfg.url || !cfg.db || !cfg.username || !cfg.password || (!cfg.companyId && !cfg.companyIds)) {
+      throw new Error('OdooConnection requiere: url, db, username, password, companyId(s)');
     }
     this.cfg = {
       heartbeatMs: 60_000,
@@ -274,6 +274,7 @@ class OdooConnection extends EventEmitter {
       debug: false,
       ...cfg,
       url: cfg.url.replace(/\/+$/, ''), // quitar trailing slashes
+      companyIds: cfg.companyIds || [cfg.companyId],
     };
     this._queue = new RequestQueue(this.cfg.concurrency);
     this._stats = { totalCalls: 0, successCalls: 0, errorCalls: 0, retryCalls: 0, authCount: 0, lastCallAt: null, connectedAt: null };
@@ -363,8 +364,8 @@ class OdooConnection extends EventEmitter {
         lang: 'es_PE',
         tz: 'America/Lima',
         ...(kwargs.context || {}),
-        allowed_company_ids: [this.cfg.companyId],
-        company_id: this.cfg.companyId,
+        allowed_company_ids: this.cfg.companyIds,
+        company_id: this.cfg.companyIds[0],
       },
     };
 
@@ -464,7 +465,8 @@ class OdooConnection extends EventEmitter {
 const connectionPool = new Map<string, OdooConnection>();
 
 function _poolKey(cfg: any) {
-  return `${cfg.url}::${cfg.db}::${cfg.companyId}`;
+  const cids = cfg.companyIds ? cfg.companyIds.join(',') : cfg.companyId;
+  return `${cfg.url}::${cfg.db}::${cids}`;
 }
 
 /**
