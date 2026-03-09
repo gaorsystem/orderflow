@@ -78,7 +78,7 @@ app.post("/api/odoo/diagnose", async (req, res) => {
     log("Paso 1: Intentando establecer conexión XML-RPC...");
     const conn = await getConnection({
       url, db, username, password,
-      companyId: 1, // Default for testing
+      companyIds: [1], // Default for testing
       debug: true
     });
     
@@ -136,7 +136,7 @@ app.post("/api/odoo/discover", async (req, res) => {
   try {
     const conn = await getConnection({
       url, db, username, password,
-      companyId: 1, // Default to 1 just for discovery
+      companyIds: [1], // Default to 1 just for discovery
       debug: true
     });
     console.log("Connection established, searching for companies...");
@@ -284,11 +284,11 @@ app.get("/api/odoo/stats", async (req, res) => {
           url: process.env.ODOO_URL,
           db: process.env.ODOO_DB,
           username: process.env.ODOO_USERNAME,
-          companyId: process.env.ODOO_COMPANY_ID
+          companyIds: process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : [parseInt(process.env.ODOO_COMPANY_ID || "1")]
         }
       });
     }
-    console.log(`Fetching real Odoo stats for company ${process.env.ODOO_COMPANY_ID}...`);
+    console.log(`Fetching real Odoo stats for company ${process.env.ODOO_COMPANY_IDS || process.env.ODOO_COMPANY_ID}...`);
     
     // Use individual try-catch for each count to avoid failing the whole request if one model doesn't exist
     const getCount = async (model: string, domain: any[] = []) => {
@@ -325,7 +325,7 @@ app.get("/api/odoo/stats", async (req, res) => {
         url: process.env.ODOO_URL,
         db: process.env.ODOO_DB,
         username: process.env.ODOO_USERNAME,
-        companyId: process.env.ODOO_COMPANY_ID
+        companyIds: process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : [parseInt(process.env.ODOO_COMPANY_ID || "1")]
       }
     });
   } catch (err: any) {
@@ -340,7 +340,7 @@ app.get("/api/odoo/stats", async (req, res) => {
         url: process.env.ODOO_URL,
         db: process.env.ODOO_DB,
         username: process.env.ODOO_USERNAME,
-        companyId: process.env.ODOO_COMPANY_ID
+        companyIds: process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : [parseInt(process.env.ODOO_COMPANY_ID || "1")]
       }
     });
   }
