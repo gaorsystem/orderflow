@@ -74,17 +74,18 @@ app.post("/api/odoo/discover", async (req, res) => {
     console.log("Connection established, searching for companies...");
     let companies = [];
     try {
-      companies = await conn.searchRead('res.company', [], ['name', 'id']);
+      companies = await conn.searchRead('res.company', [], ['name']);
     } catch (e) {
       console.warn("Could not search res.company, trying to get user's company...");
     }
 
-    if (companies.length === 0) {
+    if (!companies || companies.length === 0) {
       // Try to get the company of the current user
       try {
         const userData = await conn.read('res.users', [conn.uid!], ['company_id']);
         if (userData && userData[0] && userData[0].company_id) {
-          const [compId, compName] = userData[0].company_id;
+          const compId = userData[0].company_id[0];
+          const compName = userData[0].company_id[1];
           companies = [{ id: compId, name: compName }];
           console.log("Found user's company:", companies);
         }
