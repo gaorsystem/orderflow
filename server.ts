@@ -62,6 +62,74 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "OrderFlow API is running" });
 });
 
+app.post("/api/odoo/diagnose", async (req, res) => {
+  const { url, db, username, password } = req.body;
+  const logs: string[] = [];
+  const log = (msg: string) => {
+    console.log(`[Diagnóstico] ${msg}`);
+    logs.push(`[${new Date().toISOString()}] ${msg}`);
+  };
+
+  try {
+    log(`Iniciando diagnóstico para URL: ${url}`);
+    log(`Base de datos: ${db}`);
+    log(`Usuario: ${username}`);
+    
+    log("Paso 1: Intentando establecer conexión XML-RPC...");
+    const conn = await getConnection({
+      url, db, username, password,
+      companyId: 1, // Default for testing
+      debug: true
+    });
+    
+    log(`Paso 1 Exitoso: Conectado y autenticado. UID del usuario: ${conn.uid}`);
+    
+    log("Paso 2: Verificando acceso a res.users...");
+    let userData = null;
+    try {
+      userData = await conn.read('res.users', [conn.uid!], ['name', 'login', 'company_id', 'company_ids']);
+      log(`Paso 2 Exitoso: Datos del usuario obtenidos: ${JSON.stringify(userData)}`);
+    } catch (e: any) {
+      log(`Paso 2 Fallido: Error al leer res.users: ${e.message}`);
+    }
+
+    log("Paso 3: Verificando acceso a res.company...");
+    let companies = [];
+    try {
+      companies = await conn.searchRead('res.company', [], ['name']);
+      log(`Paso 3 Exitoso: Se encontraron ${companies.length} compañías en res.company: ${JSON.stringify(companies)}`);
+    } catch (e: any) {
+      log(`Paso 3 Fallido: Error al buscar en res.company: ${e.message}`);
+    }
+
+    log("Paso 4: Verificando acceso a product.product (Inventario)...");
+    try {
+      const products = await conn.searchRead('product.product', [], ['name'], { limit: 1 });
+      log(`Paso 4 Exitoso: Acceso a productos confirmado. Ejemplo: ${JSON.stringify(products)}`);
+    } catch (e: any) {
+      log(`Paso 4 Fallido: Error al buscar productos: ${e.message}`);
+    }
+
+    log("Paso 5: Verificando acceso a res.partner (Clientes)...");
+    try {
+      const partners = await conn.searchRead('res.partner', [], ['name'], { limit: 1 });
+      log(`Paso 5 Exitoso: Acceso a clientes confirmado. Ejemplo: ${JSON.stringify(partners)}`);
+    } catch (e: any) {
+      log(`Paso 5 Fallido: Error al buscar clientes: ${e.message}`);
+    }
+
+    log("Diagnóstico completado.");
+    res.json({ status: "ok", logs, success: true });
+  } catch (err: any) {
+    log(`ERROR FATAL: ${err.message}`);
+    if (err.faultCode) {
+      log(`Código de falla Odoo: ${err.faultCode}`);
+    }
+    log("Diagnóstico abortado debido a error crítico.");
+    res.status(401).json({ error: err.message, logs, success: false });
+  }
+});
+
 app.post("/api/odoo/discover", async (req, res) => {
   const { url, db, username, password } = req.body;
   console.log(`Attempting to discover companies for Odoo at ${url}, DB: ${db}, User: ${username}`);

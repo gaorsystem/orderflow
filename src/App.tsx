@@ -184,13 +184,15 @@ export default function App() {
   const [accessResults, setAccessResults] = useState<any>(null);
   const [isCheckingAccess, setIsCheckingAccess] = useState(false);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
   const [configError, setConfigError] = useState<string | null>(null);
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
-  const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo' | 'explorer'>('monitor');
+  const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo' | 'explorer' | 'conexion'>('conexion');
   const [explorerData, setExplorerData] = useState<{products: any[], partners: any[]}>({products: [], partners: []});
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
 
@@ -256,6 +258,42 @@ export default function App() {
       setConfigError('Error de red al verificar acceso: ' + e.message);
     } finally {
       setIsCheckingAccess(false);
+    }
+  };
+
+  const diagnoseConnection = async () => {
+    setIsDiagnosing(true);
+    setConfigError(null);
+    setConfigSuccess(null);
+    setDiagnosticLogs([]);
+    
+    try {
+      const res = await fetch('/api/odoo/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: odooConfig.url,
+          db: odooConfig.db,
+          username: odooConfig.username,
+          password: odooConfig.password
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (data.logs) {
+        setDiagnosticLogs(data.logs);
+      }
+      
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || `Error ${res.status}: Falló el diagnóstico`);
+      }
+      
+      setConfigSuccess('Diagnóstico completado con éxito. Revisa los logs para más detalles.');
+    } catch (err: any) {
+      setConfigError(err?.message || 'Error desconocido durante el diagnóstico');
+    } finally {
+      setIsDiagnosing(false);
     }
   };
 
@@ -567,6 +605,12 @@ export default function App() {
           
           <nav className="flex items-center h-10 ml-4">
             <button 
+              onClick={() => setActiveTab('conexion')}
+              className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeTab === 'conexion' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+            >
+              Conexión Odoo
+            </button>
+            <button 
               onClick={() => setActiveTab('monitor')}
               className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeTab === 'monitor' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
             >
@@ -630,8 +674,147 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-7">
-        {activeTab === 'monitor' ? (
+      <main className="flex-1 p-7 overflow-y-auto">
+        {activeTab === 'conexion' ? (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div className="bg-white border border-border-light rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-text-main mb-2">Configuración de Conexión a Odoo</h2>
+              <p className="text-sm text-text-muted mb-6">
+                Ingresa las credenciales de tu instancia de Odoo para establecer la conexión.
+                Asegúrate de que la URL sea accesible y las credenciales tengan permisos suficientes (idealmente administrador).
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">URL de Odoo</label>
+                    <input 
+                      type="url" 
+                      value={odooConfig.url} 
+                      onChange={e => setOdooConfig({...odooConfig, url: e.target.value})}
+                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple transition-all"
+                      placeholder="https://tu-odoo.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Base de Datos</label>
+                    <input 
+                      type="text" 
+                      value={odooConfig.db} 
+                      onChange={e => setOdooConfig({...odooConfig, db: e.target.value})}
+                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple transition-all"
+                      placeholder="nombre_bd"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Usuario / Email</label>
+                    <input 
+                      type="text" 
+                      value={odooConfig.username} 
+                      onChange={e => setOdooConfig({...odooConfig, username: e.target.value})}
+                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple transition-all"
+                      placeholder="admin@ejemplo.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Contraseña / API Key</label>
+                    <input 
+                      type="password" 
+                      value={odooConfig.password} 
+                      onChange={e => setOdooConfig({...odooConfig, password: e.target.value})}
+                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple transition-all"
+                      placeholder="••••••••"
+                    />
+                  </div>
+
+                  <div className="pt-4 flex gap-3">
+                    <button 
+                      onClick={discoverCompanies}
+                      disabled={isDiscovering || isDiagnosing}
+                      className="flex-1 bg-odoo-purple text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-odoo-purple/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isDiscovering ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                      Buscar Compañías
+                    </button>
+                    <button 
+                      onClick={diagnoseConnection}
+                      disabled={isDiscovering || isDiagnosing}
+                      className="flex-1 bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isDiagnosing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                      Diagnóstico Profundo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {availableCompanies.length > 0 && (
+                    <div className="bg-odoo-green/5 border border-odoo-green/20 rounded-lg p-4">
+                      <label className="block text-xs font-bold text-odoo-green uppercase tracking-wider mb-2">Compañía Seleccionada</label>
+                      <select 
+                        value={odooConfig.companyId}
+                        onChange={e => setOdooConfig({...odooConfig, companyId: parseInt(e.target.value)})}
+                        className="w-full bg-white border border-odoo-green/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-green/20 focus:border-odoo-green transition-all"
+                      >
+                        <option value={0}>Selecciona una compañía...</option>
+                        {availableCompanies.map(c => (
+                          <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
+                        ))}
+                      </select>
+                      
+                      <button 
+                        onClick={saveOdooConfig}
+                        disabled={!odooConfig.companyId}
+                        className="w-full mt-4 bg-odoo-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-odoo-green/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        <Save className="w-4 h-4" />
+                        Guardar Configuración
+                      </button>
+                    </div>
+                  )}
+
+                  {configError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg text-sm flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                      <div className="break-words flex-1">{configError}</div>
+                    </div>
+                  )}
+                  
+                  {configSuccess && (
+                    <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg text-sm flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                      <div className="break-words flex-1">{configSuccess}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {diagnosticLogs.length > 0 && (
+              <div className="bg-gray-900 rounded-xl p-4 shadow-sm border border-gray-800">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-gray-300 flex items-center gap-2">
+                    <Terminal className="w-4 h-4" />
+                    Logs de Diagnóstico
+                  </h3>
+                  <button 
+                    onClick={() => setDiagnosticLogs([])}
+                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+                <div className="bg-black rounded-lg p-4 font-mono text-[11px] text-green-400 h-64 overflow-y-auto space-y-1.5 border border-gray-800">
+                  {diagnosticLogs.map((log, i) => (
+                    <div key={i} className={`${log.includes('Fallido') || log.includes('ERROR') ? 'text-red-400' : log.includes('Exitoso') ? 'text-green-400' : 'text-gray-400'}`}>
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'monitor' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 auto-rows-auto">
             {/* Architecture Diagram */}
             <section className="col-span-full bg-white border border-border-light rounded-lg p-6 shadow-sm">
