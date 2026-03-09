@@ -222,9 +222,10 @@ export default function App() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al conectar con Odoo');
-      setAvailableCompanies(data.companies);
-      if (data.companies.length > 0) {
-        setOdooConfig(prev => ({ ...prev, companyId: data.companies[0].id }));
+      const companies = Array.isArray(data.companies) ? data.companies : [];
+      setAvailableCompanies(companies);
+      if (companies.length > 0) {
+        setOdooConfig(prev => ({ ...prev, companyId: companies[0].id }));
       }
     } catch (err: any) {
       setConfigError(err.message);
@@ -279,14 +280,14 @@ export default function App() {
       if (stats && !stats.error) {
         setData(prev => ({
           ...prev,
-          products: odoo.products || prev.products,
-          partners: odoo.partners || prev.partners,
-          pending: stats.pending_orders || 0,
-          confirmed: odoo.confirmed || 0,
-          queue: orders || [],
-          is_odoo_connected: !odoo.is_demo,
-          active_sessions_count: stats.active_sessions || 0,
-          sync_status: stats.sync_status || "OK"
+          products: odoo?.products || prev.products,
+          partners: odoo?.partners || prev.partners,
+          pending: stats?.pending_orders || 0,
+          confirmed: odoo?.confirmed || 0,
+          queue: Array.isArray(orders) ? orders : prev.queue,
+          is_odoo_connected: !!odoo && !odoo.is_demo,
+          active_sessions_count: stats?.active_sessions || 0,
+          sync_status: stats?.sync_status || "OK"
         }));
         
         // If we got real data from server, we are not in demo mode
@@ -309,9 +310,9 @@ export default function App() {
 
         setData(prev => ({
           ...prev,
-          sessions: sessions || prev.sessions,
-          syncLog: syncLog || prev.syncLog,
-          vendedores: vendedores || prev.vendedores
+          sessions: Array.isArray(sessions) ? sessions : prev.sessions,
+          syncLog: Array.isArray(syncLog) ? syncLog : prev.syncLog,
+          vendedores: Array.isArray(vendedores) ? vendedores : prev.vendedores
         }));
       } catch (err) {
         console.error('Error loading direct data:', err);

@@ -15,18 +15,21 @@ const PORT = parseInt(process.env.PORT || "3000");
 app.use(express.json());
 
 app.use((req, res, next) => {
-  if (req.url.startsWith('/api')) {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  }
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
 // --- Supabase Client ---
 const getSupabase = () => {
-  const url = process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return createClient(url, key);
+  try {
+    const url = process.env.VITE_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key);
+  } catch (e) {
+    console.error("Error initializing Supabase client:", e);
+    return null;
+  }
 };
 
 // --- Odoo Connection Helper ---
@@ -98,8 +101,10 @@ app.get("/api/odoo/stats", async (req, res) => {
   try {
     const conn = await getOdooConn();
     if (!conn) {
+      console.log("Odoo not configured, returning demo data");
       return res.json({ products: 247, partners: 89, pending: 2, confirmed: 14, is_demo: true });
     }
+    console.log("Fetching real Odoo stats...");
     const [products, partners] = await Promise.all([
       conn.searchCount('product.product', [['sale_ok', '=', true]]),
       conn.searchCount('res.partner', [['customer_rank', '>', 0]])
@@ -113,7 +118,8 @@ app.get("/api/odoo/stats", async (req, res) => {
     }
     res.json({ products, partners, pending, confirmed, is_demo: false });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("Error in /api/odoo/stats:", err);
+    res.status(500).json({ error: err.message, products: 0, partners: 0, is_demo: true });
   }
 });
 
