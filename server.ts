@@ -84,8 +84,17 @@ app.post("/api/odoo/discover", async (req, res) => {
       try {
         const userData = await conn.read('res.users', [conn.uid!], ['company_id']);
         if (userData && userData[0] && userData[0].company_id) {
-          const compId = userData[0].company_id[0];
-          const compName = userData[0].company_id[1];
+          const companyData = userData[0].company_id;
+          let compId, compName;
+          
+          if (Array.isArray(companyData)) {
+            compId = companyData[0];
+            compName = companyData[1];
+          } else {
+            compId = companyData;
+            compName = `Compañía ${compId}`;
+          }
+          
           companies = [{ id: compId, name: compName }];
           console.log("Found user's company:", companies);
         }
