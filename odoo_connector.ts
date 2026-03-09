@@ -63,12 +63,50 @@ function deserialize(xml: string): any {
   return parseValue(paramMatch[1].trim());
 }
 
+function extractTopLevelTags(xml: string, tagName: string): string[] {
+  const results: string[] = [];
+  let depth = 0;
+  let startIdx = -1;
+  const openTag = `<${tagName}>`;
+  const closeTag = `</${tagName}>`;
+  
+  let i = 0;
+  while (i < xml.length) {
+    const nextOpen = xml.indexOf(openTag, i);
+    const nextClose = xml.indexOf(closeTag, i);
+    
+    if (nextOpen !== -1 && (nextClose === -1 || nextOpen < nextClose)) {
+      if (depth === 0) startIdx = nextOpen + openTag.length;
+      depth++;
+      i = nextOpen + openTag.length;
+    } else if (nextClose !== -1) {
+      depth--;
+      if (depth === 0 && startIdx !== -1) {
+        results.push(xml.substring(startIdx, nextClose));
+        startIdx = -1;
+      }
+      i = nextClose + closeTag.length;
+    } else {
+      break;
+    }
+  }
+  return results;
+}
+
 function parseValue(xml: string): any {
   xml = xml.trim();
 
   // Unwrap <value> tag
-  const vMatch = xml.match(/^<value>([\s\S]*)<\/value>$/);
-  if (vMatch) return parseValue(vMatch[1].trim());
+  if (xml.startsWith('<value>') && xml.endsWith('</value>')) {
+    // Check if it's a single top-level value tag
+    const inner = xml.substring(7, xml.length - 8).trim();
+    // If the inner content doesn't have unbalanced <value> tags, we can unwrap it
+    // But to be safe, we just use our extractor
+    const tags = extractTopLevelTags(xml, 'value');
+    if (tags.length === 1 && tags[0] === inner) {
+      return parseValue(inner);
+    }
+  }
 
   // int / i4 / i8
   const intM = xml.match(/^<(?:int|i4|i8)>([\s\S]*?)<\/(?:int|i4|i8)>$/);
@@ -96,21 +134,23 @@ function parseValue(xml: string): any {
     const dataM = xml.match(/<data>([\s\S]*)<\/data>/);
     if (!dataM) return [];
     const items: any[] = [];
-    const re = /<value>([\s\S]*?)<\/value>/g;
-    let m;
-    while ((m = re.exec(dataM[1])) !== null) items.push(parseValue(m[1].trim()));
+    const values = extractTopLevelTags(dataM[1], 'value');
+    for (const val of values) {
+      items.push(parseValue(val.trim()));
+    }
     return items;
   }
 
   // struct
   if (xml.startsWith('<struct>')) {
     const obj: any = {};
-    const memberRe = /<member>([\s\S]*?)<\/member>/g;
-    let m;
-    while ((m = memberRe.exec(xml)) !== null) {
-      const nameM = m[1].match(/<name>([\s\S]*?)<\/name>/);
-      const valM = m[1].match(/<value>([\s\S]*?)<\/value>/);
-      if (nameM && valM) obj[nameM[1]] = parseValue(valM[1].trim());
+    const members = extractTopLevelTags(xml, 'member');
+    for (const member of members) {
+      const nameM = member.match(/<name>([\s\S]*?)<\/name>/);
+      const values = extractTopLevelTags(member, 'value');
+      if (nameM && values.length > 0) {
+        obj[nameM[1]] = parseValue(values[0].trim());
+      }
     }
     return obj;
   }

@@ -146,26 +146,16 @@ app.post("/api/odoo/discover", async (req, res) => {
       console.log("Raw companies from Odoo:", JSON.stringify(rawCompanies));
       
       if (Array.isArray(rawCompanies)) {
-        // Handle the weird format: [{}, "Name", {}, "Name2"]
-        if (rawCompanies.length > 0 && typeof rawCompanies[0] === 'object' && Object.keys(rawCompanies[0]).length === 0) {
-           let idCounter = 1;
-           for (let i = 0; i < rawCompanies.length; i++) {
-             if (typeof rawCompanies[i] === 'string') {
-               companies.push({ id: idCounter++, name: rawCompanies[i] });
-             }
-           }
-        } else {
-          companies = rawCompanies.map((c: any) => {
-            if (Array.isArray(c)) {
-              return { id: c[0], name: c[1] || `Compañía ${c[0]}` };
-            } else if (typeof c === 'object' && c !== null) {
-              const id = c.id;
-              const name = Array.isArray(c.name) ? c.name[1] : c.name;
-              if (id) return { id, name: name || `Compañía ${id}` };
-            }
-            return null;
-          }).filter(Boolean);
-        }
+        companies = rawCompanies.map((c: any) => {
+          if (Array.isArray(c)) {
+            return { id: c[0], name: c[1] || `Compañía ${c[0]}` };
+          } else if (typeof c === 'object' && c !== null) {
+            const id = c.id;
+            const name = Array.isArray(c.name) ? c.name[1] : c.name;
+            if (id) return { id, name: name || `Compañía ${id}` };
+          }
+          return null;
+        }).filter(Boolean);
       }
     } catch (e) {
       console.warn("Could not search res.company, trying to get user's company...");
