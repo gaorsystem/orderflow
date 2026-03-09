@@ -20,7 +20,11 @@ import {
   Clock,
   ShieldCheck,
   Plus,
-  ChevronRight
+  ChevronRight,
+  Search,
+  Save,
+  CheckCircle,
+  Terminal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
