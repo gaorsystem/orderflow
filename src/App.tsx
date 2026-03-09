@@ -147,7 +147,7 @@ export default function App() {
     db: 'marketperu_master',
     username: 'luis@gaorsystem.com',
     password: '06880ebb335d35f79967ee7b5abd13b08a94108f',
-    companyId: 1
+    companyId: 0
   });
   const [availableCompanies, setAvailableCompanies] = useState<{id: number, name: string}[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -171,6 +171,13 @@ export default function App() {
     } else {
       setLoginError('Credenciales incorrectas');
     }
+  };
+
+  const handleConfigChange = (field: string, value: string) => {
+    setOdooConfig(prev => ({ ...prev, [field]: value }));
+    setConfigSuccess(null);
+    setConfigError(null);
+    setAvailableCompanies([]);
   };
 
   const sbFetch = useCallback(async (path: string, opts: RequestInit = {}) => {
@@ -224,8 +231,14 @@ export default function App() {
       if (!res.ok) throw new Error(data.error || 'Error al conectar con Odoo');
       const companies = Array.isArray(data.companies) ? data.companies : [];
       setAvailableCompanies(companies);
-      if (companies.length > 0) {
-        setOdooConfig(prev => ({ ...prev, companyId: companies[0].id }));
+      
+      if (companies.length === 0) {
+        setConfigError('No se encontraron compañías en esta base de datos.');
+      } else {
+        setConfigSuccess(`Conexión exitosa. Se encontraron ${companies.length} compañías.`);
+        if (companies.length === 1) {
+          setOdooConfig(prev => ({ ...prev, companyId: companies[0].id }));
+        }
       }
     } catch (err: any) {
       setConfigError(err.message);
@@ -1566,7 +1579,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                         type="text" 
                         placeholder="https://tu-empresa.odoo.com"
                         value={odooConfig.url}
-                        onChange={e => setOdooConfig(prev => ({ ...prev, url: e.target.value }))}
+                        onChange={e => handleConfigChange('url', e.target.value)}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
                       />
                     </div>
@@ -1576,7 +1589,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                         type="text" 
                         placeholder="mi_base_de_datos"
                         value={odooConfig.db}
-                        onChange={e => setOdooConfig(prev => ({ ...prev, db: e.target.value }))}
+                        onChange={e => handleConfigChange('db', e.target.value)}
                         className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
                       />
                     </div>
@@ -1587,7 +1600,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                           type="text" 
                           placeholder="admin@empresa.com"
                           value={odooConfig.username}
-                          onChange={e => setOdooConfig(prev => ({ ...prev, username: e.target.value }))}
+                          onChange={e => handleConfigChange('username', e.target.value)}
                           className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
                         />
                       </div>
@@ -1597,7 +1610,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                           type="password" 
                           placeholder="••••••••"
                           value={odooConfig.password}
-                          onChange={e => setOdooConfig(prev => ({ ...prev, password: e.target.value }))}
+                          onChange={e => handleConfigChange('password', e.target.value)}
                           className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple outline-none transition-all"
                         />
                       </div>
@@ -1606,7 +1619,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
 
                   <button 
                     onClick={discoverCompanies}
-                    disabled={isDiscovering || !odooConfig.url || !odooConfig.password}
+                    disabled={isDiscovering || !odooConfig.url || !odooConfig.db || !odooConfig.username || !odooConfig.password}
                     className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isDiscovering ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}

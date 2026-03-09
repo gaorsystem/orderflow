@@ -64,16 +64,20 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/odoo/discover", async (req, res) => {
   const { url, db, username, password } = req.body;
+  console.log(`Attempting to discover companies for Odoo at ${url}, DB: ${db}, User: ${username}`);
   try {
     const conn = await getConnection({
       url, db, username, password,
-      companyId: 1,
+      companyId: 1, // Default to 1 just for discovery
       debug: true
     });
+    console.log("Connection established, searching for companies...");
     const companies = await conn.searchRead('res.company', [], ['name', 'id']);
+    console.log(`Found ${companies.length} companies:`, companies);
     res.json({ status: "ok", companies });
   } catch (err: any) {
-    res.status(401).json({ error: "Error de autenticación: " + err.message });
+    console.error("Discovery failed:", err);
+    res.status(401).json({ error: "Error de autenticación o conexión: " + err.message });
   }
 });
 
