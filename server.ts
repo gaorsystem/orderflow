@@ -299,7 +299,9 @@ app.post("/api/odoo/orders", async (req, res) => {
     const orderId = await conn.create('sale.order', {
       partner_id,
       order_line,
-      company_id: company_id ? parseInt(company_id) : undefined
+      company_id: company_id ? parseInt(company_id) : undefined,
+      user_id: (conn as any).uid, // Asignar al usuario que está autenticado en la conexión Odoo
+      note: "🚀 Pedido generado desde OrderFlow App (GaorSystem)"
     }, kwargs);
 
     res.json({ status: "ok", order_id: orderId });
