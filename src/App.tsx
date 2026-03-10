@@ -140,8 +140,44 @@ export default function App() {
   
   const [data, setData] = useState<DashboardData>(getEmptyData());
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number}[]}>({
+    partner_id: 0,
+    lines: []
+  });
+
+  const createOdooOrder = async () => {
+    if (!newOrder.partner_id || newOrder.lines.length === 0) {
+      alert('Selecciona un cliente y al menos un producto');
+      return;
+    }
+    setIsCreatingOrder(true);
+    try {
+      const res = await fetch('/api/odoo/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partner_id: newOrder.partner_id,
+          order_line: newOrder.lines.map(l => [0, 0, { product_id: l.product_id, product_uom_qty: l.qty }])
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert('Pedido creado exitosamente: ' + data.order_id);
+        setIsOrderModalOpen(false);
+        setNewOrder({ partner_id: 0, lines: [] });
+        loadAll();
+      } else {
+        alert('Error al crear pedido: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
   const [odooConfig, setOdooConfig] = useState({
     url: 'https://marketperu.facturaclic.pe/',
     db: 'marketperu_master',
@@ -719,21 +755,47 @@ export default function App() {
                 <div className="space-y-4">
                   {availableCompanies.length > 0 && (
                     <div className="bg-odoo-green/5 border border-odoo-green/20 rounded-lg p-4">
-                      <label className="block text-xs font-bold text-odoo-green uppercase tracking-wider mb-2">Compañía Seleccionada</label>
-                      <select 
-                        value={odooConfig.companyId}
-                        onChange={e => setOdooConfig({...odooConfig, companyId: parseInt(e.target.value)})}
-                        className="w-full bg-white border border-odoo-green/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-green/20 focus:border-odoo-green transition-all"
-                      >
-                        <option value={0}>Selecciona una compañía...</option>
-                        {availableCompanies.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
-                        ))}
-                      </select>
+                      <label className="block text-xs font-bold text-odoo-green uppercase tracking-wider mb-2">Compañías Seleccionadas</label>
+                      <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                        {availableCompanies.map(company => {
+                          if (!company || !company.id) return null;
+                          const isSelected = odooConfig.companyIds.includes(company.id);
+                          return (
+                            <button
+                              key={company.id}
+                              onClick={() => {
+                                setOdooConfig(prev => {
+                                  const newIds = isSelected 
+                                    ? prev.companyIds.filter(id => id !== company.id)
+                                    : [...prev.companyIds, company.id];
+                                  return { ...prev, companyIds: newIds };
+                                });
+                              }}
+                              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                isSelected 
+                                  ? 'bg-white border-odoo-green ring-1 ring-odoo-green' 
+                                  : 'bg-white border-border-light hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                                  isSelected ? 'bg-odoo-green text-white' : 'bg-gray-100 text-text-muted'
+                                }`}>
+                                  {company.name ? company.name.charAt(0) : '?'}
+                                </div>
+                                <span className="text-sm font-semibold text-text-main text-left">{company.name || 'Sin nombre'}</span>
+                              </div>
+                              {isSelected && (
+                                <CheckCircle2 className="w-5 h-5 text-odoo-green flex-shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                       
                       <button 
                         onClick={saveOdooConfig}
-                        disabled={!odooConfig.companyId}
+                        disabled={odooConfig.companyIds.length === 0}
                         className="w-full mt-4 bg-odoo-green text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-odoo-green/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                       >
                         <Save className="w-4 h-4" />
@@ -1290,11 +1352,11 @@ export default function App() {
               </div>
               <div className="flex items-center gap-3">
                 <button 
-                  onClick={() => setIsSearchModalOpen(true)}
+                  onClick={() => setIsOrderModalOpen(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-odoo-green text-white rounded-lg text-sm font-bold hover:bg-odoo-green-dark transition-all"
                 >
-                  <Search className="w-4 h-4" />
-                  Buscar Producto
+                  <Plus className="w-4 h-4" />
+                  Crear Pedido
                 </button>
                 <button 
                   onClick={loadExplorerData}
@@ -2152,7 +2214,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
             </motion.div>
           </div>
         )}
-        {isSearchModalOpen && (
+        {isOrderModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -2163,19 +2225,34 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
               <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-odoo-green/10 flex items-center justify-center text-odoo-green">
-                    <Search className="w-6 h-6" />
+                    <Plus className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-text-main font-display">Buscar Producto</h3>
-                    <p className="text-xs text-text-muted">Consulta cantidad y precio establecido</p>
+                    <h3 className="text-lg font-bold text-text-main font-display">Crear Nuevo Pedido</h3>
+                    <p className="text-xs text-text-muted">Busca productos, verifica stock y precio</p>
                   </div>
                 </div>
-                <button onClick={() => setIsSearchModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
                   <XCircle className="w-6 h-6 text-text-muted" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                {/* Partner Selection */}
+                <div className="space-y-3">
+                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Cliente (Partner)</label>
+                  <select 
+                    value={newOrder.partner_id}
+                    onChange={(e) => setNewOrder(prev => ({ ...prev, partner_id: parseInt(e.target.value) }))}
+                    className="w-full px-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                  >
+                    <option value={0}>Seleccionar un cliente...</option>
+                    {explorerData.partners.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Search Input */}
                 <div className="space-y-3">
                   <div className="relative">
@@ -2192,11 +2269,11 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
 
                 {/* Product Results */}
                 <div className="space-y-3">
-                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resultados</label>
+                  <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resultados de Búsqueda</label>
                   <div className="grid grid-cols-1 gap-3">
                     {explorerData.products
-                      .filter(p => p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || p.default_code?.toLowerCase().includes(searchQuery.toLowerCase()))
-                      .slice(0, 20)
+                      .filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p.default_code || '').toLowerCase().includes(searchQuery.toLowerCase()))
+                      .slice(0, 10)
                       .map(p => (
                       <div key={p.id} className="flex items-center justify-between p-4 border border-border-light rounded-xl hover:bg-gray-50 transition-all">
                         <div className="flex flex-col gap-1">
@@ -2216,10 +2293,29 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                               S/ {p.list_price?.toFixed(2)}
                             </span>
                           </div>
+                          <button 
+                            onClick={() => {
+                              const existing = newOrder.lines.find(l => l.product_id === p.id);
+                              if (existing) {
+                                setNewOrder(prev => ({
+                                  ...prev,
+                                  lines: prev.lines.map(l => l.product_id === p.id ? { ...l, qty: l.qty + 1 } : l)
+                                }));
+                              } else {
+                                setNewOrder(prev => ({
+                                  ...prev,
+                                  lines: [...prev.lines, { product_id: p.id, qty: 1 }]
+                                }));
+                              }
+                            }}
+                            className="p-2 bg-odoo-purple/10 text-odoo-purple rounded-lg hover:bg-odoo-purple hover:text-white transition-all"
+                          >
+                            <Plus className="w-5 h-5" />
+                          </button>
                         </div>
                       </div>
                     ))}
-                    {explorerData.products.length > 0 && explorerData.products.filter(p => p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || p.default_code?.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                    {explorerData.products.length > 0 && explorerData.products.filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p.default_code || '').toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                       <div className="text-center py-8 text-text-muted text-sm">
                         No se encontraron productos que coincidan con "{searchQuery}"
                       </div>
@@ -2231,14 +2327,82 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                     )}
                   </div>
                 </div>
+
+                {/* Order Lines */}
+                {newOrder.lines.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-border-light">
+                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resumen del Pedido</label>
+                    <div className="space-y-2">
+                      {newOrder.lines.map((l, i) => {
+                        const product = explorerData.products.find(p => p.id === l.product_id);
+                        return (
+                          <div key={i} className="flex items-center justify-between p-3 bg-odoo-purple/5 rounded-xl border border-odoo-purple/10">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 bg-white border border-border-light rounded-lg px-2 py-1">
+                                <button 
+                                  onClick={() => setNewOrder(prev => ({
+                                    ...prev,
+                                    lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: Math.max(1, line.qty - 1) } : line)
+                                  }))}
+                                  className="text-text-muted hover:text-odoo-purple"
+                                >
+                                  -
+                                </button>
+                                <span className="text-xs font-bold w-6 text-center">{l.qty}</span>
+                                <button 
+                                  onClick={() => setNewOrder(prev => ({
+                                    ...prev,
+                                    lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: line.qty + 1 } : line)
+                                  }))}
+                                  className="text-text-muted hover:text-odoo-purple"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <span className="text-xs font-bold text-text-main">{product?.name}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <span className="text-xs font-bold text-odoo-purple">
+                                S/ {((product?.list_price || 0) * l.qty).toFixed(2)}
+                              </span>
+                              <button 
+                                onClick={() => setNewOrder(prev => ({ ...prev, lines: prev.lines.filter((_, idx) => idx !== i) }))}
+                                className="text-odoo-red hover:underline text-[10px] font-bold"
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="flex justify-between items-center p-3 mt-2 bg-gray-50 rounded-xl border border-border-light">
+                        <span className="text-xs font-bold text-text-muted uppercase">Total Estimado</span>
+                        <span className="text-sm font-bold text-text-main">
+                          S/ {newOrder.lines.reduce((total, l) => {
+                            const product = explorerData.products.find(p => p.id === l.product_id);
+                            return total + ((product?.list_price || 0) * l.qty);
+                          }, 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
                 <button 
-                  onClick={() => setIsSearchModalOpen(false)}
+                  onClick={() => setIsOrderModalOpen(false)}
                   className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
                 >
-                  Cerrar
+                  Cancelar
+                </button>
+                <button 
+                  onClick={createOdooOrder}
+                  disabled={isCreatingOrder || !newOrder.partner_id || newOrder.lines.length === 0}
+                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-green/20 flex items-center justify-center gap-2"
+                >
+                  {isCreatingOrder ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShoppingCart className="w-5 h-5" />}
+                  Confirmar y Enviar a Odoo
                 </button>
               </div>
             </motion.div>

@@ -294,8 +294,12 @@ app.get("/api/odoo/stats", async (req, res) => {
     const getCount = async (model: string, domain: any[] = []) => {
       try {
         return await conn.searchCount(model, domain);
-      } catch (e) {
-        console.warn(`Could not get count for ${model}:`, e);
+      } catch (e: any) {
+        if (e.message && (e.message.includes('no existe') || e.message.includes('does not exist'))) {
+          console.log(`Model ${model} does not exist, skipping count.`);
+        } else {
+          console.warn(`Could not get count for ${model}:`, e.message || e);
+        }
         return 0;
       }
     };
