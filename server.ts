@@ -240,7 +240,7 @@ app.get("/api/odoo/partners", async (req, res) => {
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'city', 'company_id'], kwargs);
+    const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'mobile', 'vat', 'city', 'company_id'], kwargs);
     res.json({ status: "ok", partners });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

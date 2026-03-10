@@ -142,6 +142,7 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number}[]}>({
     partner_id: 0,
@@ -1485,9 +1486,17 @@ export default function App() {
                           <tr key={i} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3">
                               <div className="font-bold text-text-main">{p.name}</div>
-                              <div className="text-[10px] text-text-muted">{p.email || 'Sin email'}</div>
+                              <div className="text-[10px] text-text-muted flex items-center gap-2">
+                                {p.email && <span>{p.email}</span>}
+                                {p.vat && <span className="bg-gray-100 px-1 rounded font-mono text-[9px]">DNI: {p.vat}</span>}
+                              </div>
                             </td>
-                            <td className="px-4 py-3 text-text-muted font-medium">{p.phone || '—'}</td>
+                            <td className="px-4 py-3 text-text-muted font-medium">
+                              <div className="flex flex-col">
+                                <span>{p.phone || '—'}</span>
+                                {p.mobile && <span className="text-[10px] opacity-70">{p.mobile}</span>}
+                              </div>
+                            </td>
                             <td className="px-4 py-3 text-text-muted uppercase font-bold">{p.city || '—'}</td>
                           </tr>
                         ))}
@@ -2287,16 +2296,81 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                 {/* Partner Selection */}
                 <div className="space-y-3">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Cliente (Partner)</label>
-                  <select 
-                    value={newOrder.partner_id}
-                    onChange={(e) => setNewOrder(prev => ({ ...prev, partner_id: parseInt(e.target.value) }))}
-                    className="w-full px-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
-                  >
-                    <option value={0}>Seleccionar un cliente...</option>
-                    {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.partners.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                  
+                  {newOrder.partner_id === 0 ? (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+                        <input 
+                          type="text"
+                          placeholder="Buscar por DNI, Teléfono o Nombre..."
+                          value={partnerSearchQuery}
+                          onChange={(e) => setPartnerSearchQuery(e.target.value)}
+                          className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                        />
+                      </div>
+                      
+                      {partnerSearchQuery.length >= 2 && (
+                        <div className="border border-border-light rounded-xl overflow-hidden bg-white shadow-sm max-h-48 overflow-y-auto custom-scrollbar">
+                          {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.partners
+                            .filter(p => 
+                              (p.name || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) || 
+                              (p.vat || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) || 
+                              (p.phone || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) ||
+                              (p.mobile || '').toLowerCase().includes(partnerSearchQuery.toLowerCase())
+                            )
+                            .slice(0, 10)
+                            .map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => {
+                                  setNewOrder(prev => ({ ...prev, partner_id: p.id }));
+                                  setPartnerSearchQuery('');
+                                }}
+                                className="w-full text-left p-3 hover:bg-gray-50 border-b border-border-light last:border-0 flex flex-col gap-0.5"
+                              >
+                                <div className="text-sm font-bold text-text-main">{p.name}</div>
+                                <div className="flex items-center gap-3 text-[10px] text-text-muted">
+                                  {p.vat && <span className="bg-gray-100 px-1.5 py-0.5 rounded font-mono">DNI/RUC: {p.vat}</span>}
+                                  {(p.phone || p.mobile) && <span>📞 {p.phone || p.mobile}</span>}
+                                </div>
+                              </button>
+                            ))
+                          }
+                          {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.partners
+                            .filter(p => 
+                              (p.name || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) || 
+                              (p.vat || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) || 
+                              (p.phone || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) ||
+                              (p.mobile || '').toLowerCase().includes(partnerSearchQuery.toLowerCase())
+                            ).length === 0 && (
+                              <div className="p-4 text-center text-xs text-text-muted">No se encontraron clientes</div>
+                            )
+                          }
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-4 bg-odoo-purple/5 border border-odoo-purple/20 rounded-xl">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-text-main">
+                          {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.partners.find(p => p.id === newOrder.partner_id)?.name}
+                        </span>
+                        <span className="text-[10px] text-text-muted">
+                          {(() => {
+                            const p = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.partners.find(p => p.id === newOrder.partner_id) : null;
+                            return p ? `${p.vat ? `DNI: ${p.vat} | ` : ''}${p.phone || p.mobile || 'Sin teléfono'}` : '';
+                          })()}
+                        </span>
+                      </div>
+                      <button 
+                        onClick={() => setNewOrder(prev => ({ ...prev, partner_id: 0 }))}
+                        className="text-xs font-bold text-odoo-purple hover:underline"
+                      >
+                        Cambiar Cliente
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Search Input */}
