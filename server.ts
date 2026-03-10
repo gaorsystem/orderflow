@@ -207,9 +207,16 @@ app.post("/api/odoo/config", async (req, res) => {
 
 app.get("/api/odoo/products", async (req, res) => {
   try {
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
     const conn = await getOdooConn();
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
-    const products = await conn.searchRead('product.product', [['sale_ok', '=', true]], ['name', 'list_price', 'default_code', 'qty_available'], { limit: 50 });
+    
+    const kwargs: any = { limit: 100 };
+    if (companyId) {
+      kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
+    }
+
+    const products = await conn.searchRead('product.product', [['sale_ok', '=', true]], ['name', 'list_price', 'default_code', 'qty_available', 'company_id'], kwargs);
     res.json({ status: "ok", products });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -218,10 +225,28 @@ app.get("/api/odoo/products", async (req, res) => {
 
 app.get("/api/odoo/partners", async (req, res) => {
   try {
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
     const conn = await getOdooConn();
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
-    const partners = await conn.searchRead('res.partner', [], ['name', 'email', 'phone', 'city'], { limit: 50 });
+
+    const kwargs: any = { limit: 100 };
+    if (companyId) {
+      kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
+    }
+
+    const partners = await conn.searchRead('res.partner', [], ['name', 'email', 'phone', 'city', 'company_id'], kwargs);
     res.json({ status: "ok", partners });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/odoo/companies", async (req, res) => {
+  try {
+    const conn = await getOdooConn();
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const companies = await conn.searchRead('res.company', [], ['name', 'id']);
+    res.json({ status: "ok", companies });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

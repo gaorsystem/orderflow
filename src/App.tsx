@@ -198,7 +198,9 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo' | 'explorer' | 'conexion'>('conexion');
-  const [explorerData, setExplorerData] = useState<{products: any[], partners: any[]}>({products: [], partners: []});
+  const [explorerData, setExplorerData] = useState<Record<number, {products: any[], partners: any[]}>>({});
+  const [explorerCompanies, setExplorerCompanies] = useState<{id: number, name: string}[]>([]);
+  const [activeExplorerCompanyId, setActiveExplorerCompanyId] = useState<number | null>(null);
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
 
   const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
@@ -462,16 +464,41 @@ export default function App() {
   const loadExplorerData = async () => {
     setIsExplorerLoading(true);
     try {
-      const [pRes, ptRes] = await Promise.all([
-        fetch('/api/odoo/products'),
-        fetch('/api/odoo/partners')
-      ]);
-      const pData = await pRes.json();
-      const ptData = await ptRes.json();
-      setExplorerData({
-        products: pData.products || [],
-        partners: ptData.partners || []
-      });
+      // First, get companies if we don't have them
+      let companies = explorerCompanies;
+      if (companies.length === 0) {
+        const cRes = await fetch('/api/odoo/companies');
+        const cData = await cRes.json();
+        if (cData.status === 'ok') {
+          companies = cData.companies;
+          setExplorerCompanies(companies);
+          if (companies.length > 0 && !activeExplorerCompanyId) {
+            setActiveExplorerCompanyId(companies[0].id);
+          }
+        }
+      }
+
+      if (companies.length > 0) {
+        const targetCompanyId = activeExplorerCompanyId || companies[0].id;
+        
+        const [pRes, ptRes] = await Promise.all([
+          fetch(`/api/odoo/products?companyId=${targetCompanyId}`),
+          fetch(`/api/odoo/partners?companyId=${targetCompanyId}`)
+        ]);
+        
+        const pData = await pRes.json();
+        const ptData = await ptRes.json();
+        
+        if (pData.status === 'ok' && ptData.status === 'ok') {
+          setExplorerData(prev => ({
+            ...prev,
+            [targetCompanyId]: {
+              products: pData.products || [],
+              partners: ptData.partners || []
+            }
+          }));
+        }
+      }
     } catch (e) {
       console.error('Error loading explorer data:', e);
     } finally {
@@ -483,7 +510,7 @@ export default function App() {
     if (activeTab === 'explorer') {
       loadExplorerData();
     }
-  }, [activeTab]);
+  }, [activeTab, activeExplorerCompanyId]);
 
   useEffect(() => {
     loadAll();
@@ -1345,10 +1372,10 @@ export default function App() {
           </div>
         ) : activeTab === 'explorer' ? (
           <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold text-text-main font-display">Explorador de Datos Odoo</h2>
-                <p className="text-text-muted">Visualización en tiempo real de los datos sincronizados</p>
+                <h2 className="text-2xl font-extrabold text-text-main font-display">Explorador de Datos Odoo</h2>
+                <p className="text-sm text-text-muted">Visualización en tiempo real de los datos sincronizados</p>
               </div>
               <div className="flex items-center gap-3">
                 <button 
@@ -1369,19 +1396,38 @@ export default function App() {
               </div>
             </div>
 
+            {/* Company Tabs */}
+            {explorerCompanies.length > 1 && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                {explorerCompanies.map(company => (
+                  <button
+                    key={company.id}
+                    onClick={() => setActiveExplorerCompanyId(company.id)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${
+                      activeExplorerCompanyId === company.id
+                        ? 'bg-odoo-purple text-white border-odoo-purple shadow-lg shadow-odoo-purple/20'
+                        : 'bg-white text-text-muted border-border-light hover:border-odoo-purple/30'
+                    }`}
+                  >
+                    {company.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Products List */}
               <div className="bg-white border border-border-light rounded-xl shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-border-light bg-gray-50 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
                     <Package className="w-4 h-4 text-odoo-purple" />
-                    Productos ({explorerData.products.length})
+                    Productos ({activeExplorerCompanyId ? (explorerData[activeExplorerCompanyId]?.products.length || 0) : 0})
                   </h3>
                 </div>
                 <div className="overflow-y-auto max-h-[500px] custom-scrollbar">
-                  {isExplorerLoading ? (
+                  {isExplorerLoading && (!activeExplorerCompanyId || !explorerData[activeExplorerCompanyId]) ? (
                     <div className="p-12 text-center text-text-muted">Cargando productos...</div>
-                  ) : explorerData.products.length === 0 ? (
+                  ) : !activeExplorerCompanyId || !explorerData[activeExplorerCompanyId] || explorerData[activeExplorerCompanyId].products.length === 0 ? (
                     <div className="p-12 text-center text-text-muted">No se encontraron productos</div>
                   ) : (
                     <table className="w-full text-left text-xs">
@@ -1394,7 +1440,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border-light/40">
-                        {explorerData.products.map((p, i) => (
+                        {explorerData[activeExplorerCompanyId].products.map((p, i) => (
                           <tr key={i} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3 font-mono text-odoo-purple">{p.default_code || '—'}</td>
                             <td className="px-4 py-3 font-bold text-text-main">{p.name}</td>
@@ -1417,13 +1463,13 @@ export default function App() {
                 <div className="p-4 border-b border-border-light bg-gray-50 flex items-center justify-between">
                   <h3 className="text-sm font-bold text-text-main flex items-center gap-2">
                     <Users className="w-4 h-4 text-odoo-purple" />
-                    Clientes ({explorerData.partners.length})
+                    Clientes ({activeExplorerCompanyId ? (explorerData[activeExplorerCompanyId]?.partners.length || 0) : 0})
                   </h3>
                 </div>
                 <div className="overflow-y-auto max-h-[500px] custom-scrollbar">
-                  {isExplorerLoading ? (
+                  {isExplorerLoading && (!activeExplorerCompanyId || !explorerData[activeExplorerCompanyId]) ? (
                     <div className="p-12 text-center text-text-muted">Cargando clientes...</div>
-                  ) : explorerData.partners.length === 0 ? (
+                  ) : !activeExplorerCompanyId || !explorerData[activeExplorerCompanyId] || explorerData[activeExplorerCompanyId].partners.length === 0 ? (
                     <div className="p-12 text-center text-text-muted">No se encontraron clientes</div>
                   ) : (
                     <table className="w-full text-left text-xs">
@@ -1435,7 +1481,7 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border-light/40">
-                        {explorerData.partners.map((p, i) => (
+                        {explorerData[activeExplorerCompanyId].partners.map((p, i) => (
                           <tr key={i} className="hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-3">
                               <div className="font-bold text-text-main">{p.name}</div>
@@ -2247,7 +2293,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                     className="w-full px-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
                   >
                     <option value={0}>Seleccionar un cliente...</option>
-                    {explorerData.partners.map(p => (
+                    {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.partners.map(p => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
@@ -2271,7 +2317,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                 <div className="space-y-3">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resultados de Búsqueda</label>
                   <div className="grid grid-cols-1 gap-3">
-                    {explorerData.products
+                    {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.products
                       .filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p.default_code || '').toLowerCase().includes(searchQuery.toLowerCase()))
                       .slice(0, 10)
                       .map(p => (
@@ -2315,14 +2361,14 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                         </div>
                       </div>
                     ))}
-                    {explorerData.products.length > 0 && explorerData.products.filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p.default_code || '').toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                    {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.products.length > 0 && explorerData[activeExplorerCompanyId].products.filter(p => (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (p.default_code || '').toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
                       <div className="text-center py-8 text-text-muted text-sm">
                         No se encontraron productos que coincidan con "{searchQuery}"
                       </div>
                     )}
-                    {explorerData.products.length === 0 && (
+                    {(!activeExplorerCompanyId || !explorerData[activeExplorerCompanyId] || explorerData[activeExplorerCompanyId].products.length === 0) && (
                       <div className="text-center py-8 text-text-muted text-sm">
-                        No hay productos cargados. Ve a la pestaña "Explorador Odoo" y sincroniza los datos.
+                        No hay productos cargados para esta compañía. Sincroniza los datos.
                       </div>
                     )}
                   </div>
@@ -2334,7 +2380,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                     <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resumen del Pedido</label>
                     <div className="space-y-2">
                       {newOrder.lines.map((l, i) => {
-                        const product = explorerData.products.find(p => p.id === l.product_id);
+                        const product = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.products.find(p => p.id === l.product_id) : null;
                         return (
                           <div key={i} className="flex items-center justify-between p-3 bg-odoo-purple/5 rounded-xl border border-odoo-purple/10">
                             <div className="flex items-center gap-3">
@@ -2379,7 +2425,7 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                         <span className="text-xs font-bold text-text-muted uppercase">Total Estimado</span>
                         <span className="text-sm font-bold text-text-main">
                           S/ {newOrder.lines.reduce((total, l) => {
-                            const product = explorerData.products.find(p => p.id === l.product_id);
+                            const product = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.products.find(p => p.id === l.product_id) : null;
                             return total + ((product?.list_price || 0) * l.qty);
                           }, 0).toFixed(2)}
                         </span>
