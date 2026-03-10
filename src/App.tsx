@@ -2542,12 +2542,27 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                           })()}
                         </span>
                       </div>
-                      <button 
-                        onClick={() => setNewOrder(prev => ({ ...prev, partner_id: 0 }))}
-                        className="text-xs font-bold text-odoo-purple hover:underline"
-                      >
-                        Cambiar Cliente
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <button 
+                          onClick={() => {
+                            const p = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.partners.find(p => p.id === newOrder.partner_id) : null;
+                            if (p) {
+                              setEditingPartner(p);
+                              setIsEditPartnerModalOpen(true);
+                            }
+                          }}
+                          className="text-xs font-bold text-odoo-purple hover:underline flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          Editar Cliente
+                        </button>
+                        <button 
+                          onClick={() => setNewOrder(prev => ({ ...prev, partner_id: 0 }))}
+                          className="text-[10px] font-medium text-text-muted hover:text-text-main hover:underline"
+                        >
+                          Cambiar Cliente
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
