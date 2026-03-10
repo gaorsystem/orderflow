@@ -363,9 +363,9 @@ class OdooConnection extends EventEmitter {
       context: {
         lang: 'es_PE',
         tz: 'America/Lima',
-        ...(kwargs.context || {}),
         allowed_company_ids: this.cfg.companyIds,
         company_id: this.cfg.companyIds[0],
+        ...(kwargs.context || {}),
       },
     };
 
@@ -425,7 +425,11 @@ class OdooConnection extends EventEmitter {
   // ── SHORTCUTS ────────────────────────────────
   searchRead(model: string, domain: any[] = [], fields: string[] = [], opts: any = {}) {
     return this.execute(model, 'search_read', [domain], {
-      fields, limit: opts.limit || 0, offset: opts.offset || 0, order: opts.order || 'id asc',
+      fields, 
+      limit: opts.limit || 0, 
+      offset: opts.offset || 0, 
+      order: opts.order || 'id asc',
+      context: opts.context || {}
     });
   }
   search(model: string, domain: any[] = [], opts: any = {}) {

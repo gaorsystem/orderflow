@@ -211,12 +211,15 @@ app.get("/api/odoo/products", async (req, res) => {
     const conn = await getOdooConn();
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
     
-    const kwargs: any = { limit: 100 };
+    const domain: any[] = [['sale_ok', '=', true]];
+    const kwargs: any = { limit: 1000 }; // Aumentar límite para sincronizar más productos
+    
     if (companyId) {
+      domain.push(['company_id', 'in', [companyId, false]]);
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const products = await conn.searchRead('product.product', [['sale_ok', '=', true]], ['name', 'list_price', 'default_code', 'qty_available', 'company_id'], kwargs);
+    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'company_id'], kwargs);
     res.json({ status: "ok", products });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -229,12 +232,15 @@ app.get("/api/odoo/partners", async (req, res) => {
     const conn = await getOdooConn();
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
-    const kwargs: any = { limit: 100 };
+    const domain: any[] = [];
+    const kwargs: any = { limit: 1000 };
+    
     if (companyId) {
+      domain.push(['company_id', 'in', [companyId, false]]);
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const partners = await conn.searchRead('res.partner', [], ['name', 'email', 'phone', 'city', 'company_id'], kwargs);
+    const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'city', 'company_id'], kwargs);
     res.json({ status: "ok", partners });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
