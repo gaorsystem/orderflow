@@ -161,7 +161,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           partner_id: newOrder.partner_id,
-          order_line: newOrder.lines.map(l => [0, 0, { product_id: l.product_id, product_uom_qty: l.qty }])
+          order_line: newOrder.lines.map(l => [0, 0, { product_id: l.product_id, product_uom_qty: l.qty }]),
+          company_id: activeExplorerCompanyId
         })
       });
       const data = await res.json();

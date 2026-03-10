@@ -282,16 +282,25 @@ app.get("/api/odoo/check-access", async (req, res) => {
 });
 
 app.post("/api/odoo/orders", async (req, res) => {
-  const { partner_id, order_line } = req.body;
+  const { partner_id, order_line, company_id } = req.body;
   try {
     const conn = await getOdooConn();
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
+    const kwargs: any = {};
+    if (company_id) {
+      kwargs.context = { 
+        company_id: parseInt(company_id), 
+        allowed_company_ids: [parseInt(company_id)] 
+      };
+    }
+
     // order_line should be an array of [0, 0, { product_id, product_uom_qty, price_unit }]
     const orderId = await conn.create('sale.order', {
       partner_id,
-      order_line
-    });
+      order_line,
+      company_id: company_id ? parseInt(company_id) : undefined
+    }, kwargs);
 
     res.json({ status: "ok", order_id: orderId });
   } catch (err: any) {

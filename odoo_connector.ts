@@ -437,7 +437,7 @@ class OdooConnection extends EventEmitter {
   }
   searchCount(model: string, domain: any[] = []) { return this.execute(model, 'search_count', [domain]); }
   read(model: string, ids: number[], fields: string[] = []) { return this.execute(model, 'read', [ids], { fields }); }
-  create(model: string, values: any) { return this.execute(model, 'create', [values]); }
+  create(model: string, values: any, kwargs: any = {}) { return this.execute(model, 'create', [values], kwargs); }
   write(model: string, ids: number[], values: any) { return this.execute(model, 'write', [ids, values]); }
   unlink(model: string, ids: number[]) { return this.execute(model, 'unlink', [ids]); }
 
