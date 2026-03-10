@@ -240,7 +240,7 @@ app.get("/api/odoo/partners", async (req, res) => {
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'mobile', 'vat', 'city', 'company_id'], kwargs);
+    const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'mobile', 'vat', 'street', 'city', 'company_id'], kwargs);
     res.json({ status: "ok", partners });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -305,6 +305,28 @@ app.post("/api/odoo/orders", async (req, res) => {
     }, kwargs);
 
     res.json({ status: "ok", order_id: orderId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/odoo/partners/:id", async (req, res) => {
+  const { id } = req.params;
+  const { values, company_id } = req.body;
+  try {
+    const conn = await getOdooConn();
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+
+    const kwargs: any = {};
+    if (company_id) {
+      kwargs.context = { 
+        company_id: parseInt(company_id), 
+        allowed_company_ids: [parseInt(company_id)] 
+      };
+    }
+
+    await conn.write('res.partner', [parseInt(id)], values);
+    res.json({ status: "ok" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

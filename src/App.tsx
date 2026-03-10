@@ -24,7 +24,8 @@ import {
   Search,
   Save,
   CheckCircle,
-  Terminal
+  Terminal,
+  Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -141,9 +142,12 @@ export default function App() {
   const [data, setData] = useState<DashboardData>(getEmptyData());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [isEditPartnerModalOpen, setIsEditPartnerModalOpen] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isUpdatingPartner, setIsUpdatingPartner] = useState(false);
   const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number}[]}>({
     partner_id: 0,
     lines: []
@@ -180,6 +184,44 @@ export default function App() {
       setIsCreatingOrder(false);
     }
   };
+
+  const updatePartner = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPartner) return;
+    setIsUpdatingPartner(true);
+    try {
+      const res = await fetch(`/api/odoo/partners/${editingPartner.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          values: {
+            name: editingPartner.name,
+            vat: editingPartner.vat,
+            phone: editingPartner.phone,
+            mobile: editingPartner.mobile,
+            email: editingPartner.email,
+            street: editingPartner.street,
+            city: editingPartner.city
+          },
+          company_id: activeExplorerCompanyId
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert('Cliente actualizado correctamente');
+        setIsEditPartnerModalOpen(false);
+        loadExplorerData();
+      } else {
+        alert('Error al actualizar: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsUpdatingPartner(false);
+    }
+  };
+
+  const normalizePhone = (phone: string) => phone.replace(/\D/g, '');
   const [odooConfig, setOdooConfig] = useState({
     url: 'https://marketperu.facturaclic.pe/',
     db: 'marketperu_master',
@@ -1498,7 +1540,24 @@ export default function App() {
                                 {p.mobile && <span className="text-[10px] opacity-70">{p.mobile}</span>}
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-text-muted uppercase font-bold">{p.city || '—'}</td>
+                            <td className="px-4 py-3 text-text-muted uppercase font-bold">
+                              <div className="flex flex-col">
+                                <span>{p.city || '—'}</span>
+                                {p.street && <span className="text-[9px] normal-case opacity-70 truncate max-w-[150px]">{p.street}</span>}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button 
+                                onClick={() => {
+                                  setEditingPartner(p);
+                                  setIsEditPartnerModalOpen(true);
+                                }}
+                                className="p-2 text-odoo-purple hover:bg-odoo-purple/10 rounded-lg transition-all"
+                                title="Editar Cliente"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2270,6 +2329,118 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
             </motion.div>
           </div>
         )}
+        {isEditPartnerModalOpen && editingPartner && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple">
+                    <Edit2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-text-main font-display">Editar Cliente</h3>
+                    <p className="text-xs text-text-muted">Actualiza la información en Odoo</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsEditPartnerModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                  <XCircle className="w-6 h-6 text-text-muted" />
+                </button>
+              </div>
+
+              <form onSubmit={updatePartner} className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Nombre / Razón Social</label>
+                    <input 
+                      type="text"
+                      required
+                      value={editingPartner.name}
+                      onChange={(e) => setEditingPartner({...editingPartner, name: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">DNI / RUC</label>
+                    <input 
+                      type="text"
+                      value={editingPartner.vat || ''}
+                      onChange={(e) => setEditingPartner({...editingPartner, vat: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Email</label>
+                    <input 
+                      type="email"
+                      value={editingPartner.email || ''}
+                      onChange={(e) => setEditingPartner({...editingPartner, email: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Teléfono</label>
+                    <input 
+                      type="text"
+                      value={editingPartner.phone || ''}
+                      onChange={(e) => setEditingPartner({...editingPartner, phone: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Móvil</label>
+                    <input 
+                      type="text"
+                      value={editingPartner.mobile || ''}
+                      onChange={(e) => setEditingPartner({...editingPartner, mobile: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Dirección (Calle)</label>
+                    <input 
+                      type="text"
+                      value={editingPartner.street || ''}
+                      onChange={(e) => setEditingPartner({...editingPartner, street: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Ciudad / Distrito</label>
+                    <input 
+                      type="text"
+                      value={editingPartner.city || ''}
+                      onChange={(e) => setEditingPartner({...editingPartner, city: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => setIsEditPartnerModalOpen(false)}
+                    className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isUpdatingPartner}
+                    className="flex-1 py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isUpdatingPartner ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    Guardar Cambios
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
         {isOrderModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
             <motion.div 
@@ -2314,12 +2485,19 @@ odoo.on('heartbeat', ({ ok }) => console.log(ok ? '💓 OK' : '💔 Error'));`}
                       {partnerSearchQuery.length >= 2 && (
                         <div className="border border-border-light rounded-xl overflow-hidden bg-white shadow-sm max-h-48 overflow-y-auto custom-scrollbar">
                           {activeExplorerCompanyId && explorerData[activeExplorerCompanyId]?.partners
-                            .filter(p => 
-                              (p.name || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) || 
-                              (p.vat || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) || 
-                              (p.phone || '').toLowerCase().includes(partnerSearchQuery.toLowerCase()) ||
-                              (p.mobile || '').toLowerCase().includes(partnerSearchQuery.toLowerCase())
-                            )
+                            .filter(p => {
+                              const query = partnerSearchQuery.toLowerCase();
+                              const normalizedQuery = normalizePhone(query);
+                              
+                              const nameMatch = (p.name || '').toLowerCase().includes(query);
+                              const vatMatch = (p.vat || '').toLowerCase().includes(query);
+                              
+                              // Búsqueda por teléfono normalizada (solo dígitos)
+                              const phoneMatch = normalizedQuery && normalizePhone(p.phone || '').includes(normalizedQuery);
+                              const mobileMatch = normalizedQuery && normalizePhone(p.mobile || '').includes(normalizedQuery);
+                              
+                              return nameMatch || vatMatch || phoneMatch || mobileMatch;
+                            })
                             .slice(0, 10)
                             .map(p => (
                               <button
