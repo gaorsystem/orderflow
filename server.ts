@@ -59,7 +59,7 @@ const getOdooConn = async (customCfg?: any) => {
 
 // --- API Routes ---
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "OrderFlow API is running" });
+  res.json({ status: "ok", message: "SalesMe API is running" });
 });
 
 app.post("/api/odoo/diagnose", async (req, res) => {
@@ -301,7 +301,7 @@ app.post("/api/odoo/orders", async (req, res) => {
       order_line,
       company_id: company_id ? parseInt(company_id) : undefined,
       user_id: (conn as any).uid, // Asignar al usuario que está autenticado en la conexión Odoo
-      note: "🚀 Pedido generado desde OrderFlow App (GaorSystem)"
+      note: "🚀 Pedido generado desde SalesMe App (GaorSystem)"
     }, kwargs);
 
     res.json({ status: "ok", order_id: orderId });
