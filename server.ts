@@ -332,7 +332,7 @@ app.post("/api/odoo/orders", async (req, res) => {
       order_line,
       company_id: company_id ? parseInt(company_id) : undefined,
       user_id: (conn as any).uid, // Asignar al usuario que está autenticado en la conexión Odoo
-      note: note ? `${note}\n\n🚀 Pedido generado desde SalesMe App (GaorSystem)` : "🚀 Pedido generado desde SalesMe App (GaorSystem)"
+      note: note ? `${note}\n\n🚀 Cotización generada desde SalesMe App (GaorSystem)` : "🚀 Cotización generada desde SalesMe App (GaorSystem)"
     }, kwargs);
 
     if (confirm) {

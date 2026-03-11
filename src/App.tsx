@@ -190,10 +190,10 @@ export default function App() {
 
   const saveAsDraft = () => {
     setIsOrderModalOpen(false);
-    alert('Pedido guardado como borrador localmente. Puedes continuar luego.');
+    alert('Cotización guardada como borrador localmente. Puedes continuar luego.');
   };
 
-  const createOdooOrder = async (confirm: boolean = true) => {
+  const createOdooOrder = async (confirm: boolean = false) => {
     if (!newOrder.partner_id || newOrder.lines.length === 0) {
       alert('Selecciona un cliente y al menos un producto');
       return;
@@ -225,14 +225,14 @@ export default function App() {
       });
       const data = await res.json();
       if (data.status === 'ok') {
-        alert(confirm ? 'Pedido enviado y confirmado con éxito en Odoo' : 'Pedido borrador creado con éxito en Odoo');
+        alert(confirm ? 'Pedido enviado y confirmado con éxito en Odoo' : 'Cotización creada con éxito en Odoo');
         setNewOrder({ partner_id: 0, lines: [], note: '' });
         localStorage.removeItem('salesme_draft_order');
         setIsOrderModalOpen(false);
         setShowConfirmOrder(false);
         loadAll();
       } else {
-        alert('Error al crear pedido: ' + data.error);
+        alert('Error al crear cotización: ' + data.error);
       }
     } catch (e: any) {
       alert('Error de red: ' + e.message);
@@ -666,7 +666,7 @@ export default function App() {
 
             <div className="mb-8 p-4 bg-gray-50 rounded-2xl border border-border-light/50">
               <p className="text-[11px] text-text-muted font-medium text-center italic">
-                "Transforma conversaciones en pedidos reales en segundos, eliminando la carga administrativa y acelerando el cierre de ventas."
+                "Transforma conversaciones en cotizaciones reales en segundos, eliminando la carga administrativa y acelerando el cierre de ventas."
               </p>
             </div>
 
@@ -759,7 +759,7 @@ export default function App() {
               onClick={() => setActiveView('orders')}
               className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'orders' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
             >
-              Pedidos
+              Cotizaciones
             </button>
             <button 
               onClick={() => setActiveView('partners')}
@@ -842,7 +842,7 @@ export default function App() {
               </div>
 
               <div className="mt-2">
-                <div className="text-[10px] text-text-muted mb-2 uppercase tracking-widest font-bold">Pedidos últimas 12h</div>
+                <div className="text-[10px] text-text-muted mb-2 uppercase tracking-widest font-bold">Cotizaciones últimas 12h</div>
                 <div className="flex items-end gap-[3px] h-10">
                   {data.spark.map((v, i) => {
                     const max = Math.max(...data.spark, 1);
@@ -862,7 +862,7 @@ export default function App() {
             {/* Order Queue */}
             <section className="md:col-span-2 bg-white border border-border-light rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Pedidos Recientes (Odoo)</h2>
+                <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Cotizaciones Recientes (Odoo)</h2>
                 <button onClick={loadAll} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                   <RefreshCw className={`w-4 h-4 text-text-muted ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
@@ -872,7 +872,7 @@ export default function App() {
                 {data.odooOrders.length === 0 ? (
                   <div className="py-12 text-center text-text-muted">
                     <div className="text-3xl opacity-40 mb-3">📦</div>
-                    <p className="text-sm">No hay pedidos registrados</p>
+                    <p className="text-sm">No hay cotizaciones registradas</p>
                   </div>
                 ) : (
                   data.odooOrders.slice(0, 5).map((p, i) => {
@@ -912,7 +912,7 @@ export default function App() {
                   onClick={() => setActiveView('orders')}
                   className="w-full mt-4 py-2 text-xs font-bold text-odoo-purple hover:bg-odoo-purple/5 rounded-lg transition-colors"
                 >
-                  Ver todos los pedidos
+                  Ver todas las cotizaciones
                 </button>
               )}
             </section>
@@ -982,12 +982,12 @@ export default function App() {
                   {newOrder.lines.length > 0 ? (
                     <>
                       <ShoppingCart className="w-4 h-4" />
-                      Ver Pedido ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
+                      Ver Cotización ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
                     </>
                   ) : (
                     <>
                       <Plus className="w-4 h-4" />
-                      Crear Pedido
+                      Crear Cotización
                     </>
                   )}
                 </button>
@@ -1063,7 +1063,7 @@ export default function App() {
         ) : activeView === 'orders' ? (
           <div className="max-w-4xl mx-auto space-y-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-text-main font-display">Mis Pedidos</h2>
+              <h2 className="text-xl font-bold text-text-main font-display">Mis Cotizaciones</h2>
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setIsOrderModalOpen(true)}
@@ -1072,19 +1072,19 @@ export default function App() {
                   {newOrder.lines.length > 0 ? (
                     <>
                       <ShoppingCart className="w-4 h-4" />
-                      Ver Pedido ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
+                      Ver Cotización ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
                     </>
                   ) : (
                     <>
                       <Plus className="w-4 h-4" />
-                      Crear Pedido
+                      Crear Cotización
                     </>
                   )}
                 </button>
                 <button 
                   onClick={loadAll} 
                   className="p-2 bg-white border border-border-light rounded-lg text-text-muted hover:bg-gray-50 transition-colors"
-                  title="Sincronizar Pedidos"
+                  title="Sincronizar Cotizaciones"
                 >
                   <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
@@ -1165,7 +1165,7 @@ export default function App() {
                   return (
                     <div className="py-12 text-center text-text-muted bg-white rounded-2xl border border-border-light">
                       <div className="text-3xl opacity-40 mb-3">📦</div>
-                      <p className="text-sm">No hay pedidos para mostrar en esta vista</p>
+                      <p className="text-sm">No hay cotizaciones para mostrar en esta vista</p>
                     </div>
                   );
                 }
@@ -1204,12 +1204,12 @@ export default function App() {
                   {newOrder.lines.length > 0 ? (
                     <>
                       <ShoppingCart className="w-4 h-4" />
-                      Ver Pedido ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
+                      Ver Cotización ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
                     </>
                   ) : (
                     <>
                       <Plus className="w-4 h-4" />
-                      Crear Pedido
+                      Crear Cotización
                     </>
                   )}
                 </button>
@@ -1695,7 +1695,7 @@ export default function App() {
                     <Plus className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-text-main font-display">Crear Nuevo Pedido</h3>
+                    <h3 className="text-lg font-bold text-text-main font-display">Crear Nueva Cotización</h3>
                     <p className="text-xs text-text-muted">
                       {activeExplorerCompanyId ? `Para: ${explorerCompanies.find(c => c.id === activeExplorerCompanyId)?.name || 'Compañía'}` : 'Busca productos, verifica stock y precio'}
                     </p>
@@ -1876,7 +1876,7 @@ export default function App() {
                 {/* Order Lines */}
                 {newOrder.lines.length > 0 && (
                   <div className="space-y-3 pt-4 border-t border-border-light">
-                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resumen del Pedido</label>
+                    <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resumen de la Cotización</label>
                     <div className="space-y-2">
                       {newOrder.lines.map((l, i) => {
                         const product = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.products.find(p => p.id === l.product_id) : null;
@@ -1925,7 +1925,7 @@ export default function App() {
                       })}
                       
                       <div className="mt-4 space-y-2">
-                        <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Nota General del Pedido (Opcional)</label>
+                        <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Nota General de la Cotización (Opcional)</label>
                         <textarea 
                           value={newOrder.note || ''}
                           onChange={(e) => setNewOrder(prev => ({ ...prev, note: e.target.value }))}
@@ -1962,7 +1962,7 @@ export default function App() {
                   className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-green/20 flex items-center justify-center gap-2"
                 >
                   <ShoppingCart className="w-5 h-5" />
-                  Enviar a Odoo
+                  Crear Cotización
                 </button>
               </div>
             </motion.div>
@@ -1979,7 +1979,7 @@ export default function App() {
               className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
             >
               <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
-                <h3 className="text-lg font-bold text-text-main font-display">Agregar al Pedido</h3>
+                <h3 className="text-lg font-bold text-text-main font-display">Agregar a la Cotización</h3>
                 <button onClick={() => setSelectedProductForCart(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
                   <XCircle className="w-6 h-6 text-text-muted" />
                 </button>
@@ -2064,9 +2064,9 @@ export default function App() {
               <div className="w-16 h-16 bg-odoo-amber/10 text-odoo-amber rounded-full flex items-center justify-center mx-auto mb-4">
                 <ShoppingCart className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black text-text-main font-display mb-2">¿Enviar pedido a Odoo?</h3>
+              <h3 className="text-xl font-black text-text-main font-display mb-2">¿Crear Cotización en Odoo?</h3>
               <p className="text-sm text-text-muted mb-6">
-                Estás a punto de enviar este pedido a Odoo Ventas. Asegúrate de que los productos y cantidades sean correctos.
+                Estás a punto de crear una cotización en Odoo Ventas. Asegúrate de que los productos y cantidades sean correctos.
               </p>
               <div className="flex gap-3">
                 <button 
@@ -2076,11 +2076,11 @@ export default function App() {
                   Revisar
                 </button>
                 <button 
-                  onClick={() => createOdooOrder(true)}
+                  onClick={() => createOdooOrder(false)}
                   disabled={isCreatingOrder}
                   className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2"
                 >
-                  {isCreatingOrder ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sí, Enviar'}
+                  {isCreatingOrder ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sí, Crear'}
                 </button>
               </div>
             </motion.div>
