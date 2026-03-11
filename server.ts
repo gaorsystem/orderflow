@@ -281,8 +281,39 @@ app.get("/api/odoo/check-access", async (req, res) => {
   }
 });
 
+app.get("/api/odoo/orders", async (req, res) => {
+  try {
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
+    const conn = await getOdooConn();
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+
+    const domain: any[] = [];
+    const kwargs: any = { 
+      limit: 50, 
+      order: 'date_order desc',
+      fields: ['id', 'name', 'partner_id', 'amount_total', 'state', 'date_order', 'note']
+    };
+    
+    if (companyId) {
+      domain.push(['company_id', '=', companyId]);
+      kwargs.context = { 
+        company_id: companyId, 
+        allowed_company_ids: [companyId] 
+      };
+    }
+
+    // Only fetch orders for the current user
+    domain.push(['user_id', '=', (conn as any).uid]);
+
+    const orders = await conn.searchRead('sale.order', domain, kwargs.fields, kwargs);
+    res.json({ status: "ok", orders });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/odoo/orders", async (req, res) => {
-  const { partner_id, order_line, company_id } = req.body;
+  const { partner_id, order_line, company_id, confirm, note } = req.body;
   try {
     const conn = await getOdooConn();
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
@@ -295,14 +326,18 @@ app.post("/api/odoo/orders", async (req, res) => {
       };
     }
 
-    // order_line should be an array of [0, 0, { product_id, product_uom_qty, price_unit }]
+    // order_line should be an array of [0, 0, { product_id, product_uom_qty, price_unit, name }]
     const orderId = await conn.create('sale.order', {
       partner_id,
       order_line,
       company_id: company_id ? parseInt(company_id) : undefined,
       user_id: (conn as any).uid, // Asignar al usuario que está autenticado en la conexión Odoo
-      note: "🚀 Pedido generado desde SalesMe App (GaorSystem)"
+      note: note ? `${note}\n\n🚀 Pedido generado desde SalesMe App (GaorSystem)` : "🚀 Pedido generado desde SalesMe App (GaorSystem)"
     }, kwargs);
+
+    if (confirm) {
+      await conn.execute('sale.order', 'action_confirm', [[orderId]], kwargs);
+    }
 
     res.json({ status: "ok", order_id: orderId });
   } catch (err: any) {

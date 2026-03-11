@@ -88,6 +88,7 @@ interface DashboardData {
   confirmed: number;
   sessions: Session[];
   queue: Order[];
+  odooOrders: any[];
   syncLog: SyncLog[];
   vendedores: Seller[];
   spark: number[];
@@ -122,6 +123,7 @@ const getEmptyData = (): DashboardData => ({
   confirmed: 0,
   sessions: [],
   queue: [],
+  odooOrders: [],
   syncLog: [],
   vendedores: [],
   spark: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -161,12 +163,37 @@ export default function App() {
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isUpdatingPartner, setIsUpdatingPartner] = useState(false);
-  const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number}[]}>({
+  const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number, comment?: string}[], note?: string}>({
     partner_id: 0,
-    lines: []
+    lines: [],
+    note: ''
   });
+  const [selectedProductForCart, setSelectedProductForCart] = useState<{product: any, qty: number, comment: string} | null>(null);
+  const [showConfirmOrder, setShowConfirmOrder] = useState(false);
 
-  const createOdooOrder = async () => {
+  useEffect(() => {
+    const draft = localStorage.getItem('salesme_draft_order');
+    if (draft) {
+      try {
+        setNewOrder(JSON.parse(draft));
+      } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    if (newOrder.partner_id || newOrder.lines.length > 0) {
+      localStorage.setItem('salesme_draft_order', JSON.stringify(newOrder));
+    } else {
+      localStorage.removeItem('salesme_draft_order');
+    }
+  }, [newOrder]);
+
+  const saveAsDraft = () => {
+    setIsOrderModalOpen(false);
+    alert('Pedido guardado como borrador localmente. Puedes continuar luego.');
+  };
+
+  const createOdooOrder = async (confirm: boolean = true) => {
     if (!newOrder.partner_id || newOrder.lines.length === 0) {
       alert('Selecciona un cliente y al menos un producto');
       return;
@@ -178,16 +205,31 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           partner_id: newOrder.partner_id,
-          order_line: newOrder.lines.map(l => [0, 0, { product_id: l.product_id, product_uom_qty: l.qty }]),
-          company_id: activeExplorerCompanyId
+          company_id: activeExplorerCompanyId,
+          confirm: confirm,
+          note: newOrder.note,
+          order_line: newOrder.lines.map(l => {
+            const product = explorerData[activeExplorerCompanyId || 0]?.products.find(p => p.id === l.product_id);
+            let name = product?.name || '';
+            if (l.comment) {
+              name += `\nNota: ${l.comment}`;
+            }
+            return [0, 0, {
+              product_id: l.product_id,
+              product_uom_qty: l.qty,
+              price_unit: product?.list_price || 0,
+              name: name
+            }];
+          })
         })
       });
       const data = await res.json();
       if (data.status === 'ok') {
-        alert('Pedido creado exitosamente: ' + data.order_id);
-        
+        alert(confirm ? 'Pedido enviado y confirmado con éxito en Odoo' : 'Pedido borrador creado con éxito en Odoo');
+        setNewOrder({ partner_id: 0, lines: [], note: '' });
+        localStorage.removeItem('salesme_draft_order');
         setIsOrderModalOpen(false);
-        setNewOrder({ partner_id: 0, lines: [] });
+        setShowConfirmOrder(false);
         loadAll();
       } else {
         alert('Error al crear pedido: ' + data.error);
@@ -260,6 +302,7 @@ export default function App() {
   const [explorerCompanies, setExplorerCompanies] = useState<{id: number, name: string}[]>([]);
   const [activeExplorerCompanyId, setActiveExplorerCompanyId] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<'dashboard' | 'catalog' | 'orders' | 'partners' | 'settings'>('dashboard');
+  const [orderTab, setOrderTab] = useState<'all' | 'draft' | 'sent'>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [vendedorLogueado, setVendedorLogueado] = useState<Seller | null>(null);
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
@@ -469,15 +512,17 @@ export default function App() {
     
     try {
       // Always try to fetch from our server first as it has the service role key
-      const [statsRes, ordersRes, odooRes] = await Promise.all([
+      const [statsRes, ordersRes, odooRes, odooOrdersRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/recent-orders'),
-        fetch('/api/odoo/stats')
+        fetch('/api/odoo/stats'),
+        fetch(`/api/odoo/orders${activeExplorerCompanyId ? `?companyId=${activeExplorerCompanyId}` : ''}`)
       ]);
       
       const stats = await statsRes.json();
       const orders = await ordersRes.json();
       const odoo = await odooRes.json();
+      const odooOrders = await odooOrdersRes.json();
       
       if (stats && !stats.error) {
         setData(prev => ({
@@ -488,6 +533,7 @@ export default function App() {
           pending: stats?.pending_orders || 0,
           confirmed: odoo?.confirmed || 0,
           queue: Array.isArray(orders) ? orders : prev.queue,
+          odooOrders: odooOrders?.orders || prev.odooOrders,
           is_odoo_connected: !!odoo && !odoo.is_demo,
           active_sessions_count: stats?.active_sessions || 0,
           sync_status: stats?.sync_status || "OK",
@@ -816,26 +862,26 @@ export default function App() {
             {/* Order Queue */}
             <section className="md:col-span-2 bg-white border border-border-light rounded-2xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Cola de Pedidos Recientes</h2>
+                <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Pedidos Recientes (Odoo)</h2>
                 <button onClick={loadAll} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
                   <RefreshCw className={`w-4 h-4 text-text-muted ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
               </div>
               
               <div className="space-y-1">
-                {data.queue.length === 0 ? (
+                {data.odooOrders.length === 0 ? (
                   <div className="py-12 text-center text-text-muted">
                     <div className="text-3xl opacity-40 mb-3">📦</div>
                     <p className="text-sm">No hay pedidos registrados</p>
                   </div>
                 ) : (
-                  data.queue.slice(0, 5).map((p, i) => {
+                  data.odooOrders.slice(0, 5).map((p, i) => {
                     const stateMap: Record<string, 'ok' | 'pending' | 'error' | 'dim'> = { 
-                      confirmed: 'ok', 
-                      pending: 'pending', 
-                      error: 'error', 
-                      processing: 'pending', 
-                      cancelled: 'dim' 
+                      sale: 'ok', 
+                      done: 'ok',
+                      sent: 'ok',
+                      draft: 'pending', 
+                      cancel: 'dim' 
                     };
                     return (
                       <div 
@@ -843,25 +889,25 @@ export default function App() {
                         className="flex items-center gap-4 py-3 border-b border-border-light/40 last:border-0"
                       >
                         <div className="w-10 h-10 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple font-bold text-[10px]">
-                          {p.odoo_order_ref ? 'SO' : '#'}
+                          SO
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-bold text-text-main truncate">{p.partner_nombre}</div>
+                          <div className="text-sm font-bold text-text-main truncate">{p.name}</div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <StatusPill status={stateMap[p.estado] || 'dim'} text={p.estado} />
-                            <span className="text-[10px] text-text-muted font-semibold">· {timeAgo(p.created_at)}</span>
+                            <StatusPill status={stateMap[p.state] || 'dim'} text={p.state === 'draft' ? 'Borrador' : p.state === 'sale' ? 'Confirmado' : p.state === 'sent' ? 'Enviado' : p.state} />
+                            <span className="text-[10px] text-text-muted font-semibold">· {p.partner_id?.[1] || 'Cliente'}</span>
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-sm font-black text-odoo-green">S/ {parseFloat(p.total as any || 0).toFixed(2)}</div>
-                          <div className="text-[9px] text-text-muted font-bold">{p.odoo_order_ref || 'PENDIENTE'}</div>
+                          <div className="text-sm font-black text-odoo-green">S/ {parseFloat(p.amount_total || 0).toFixed(2)}</div>
+                          <div className="text-[9px] text-text-muted font-bold">{new Date(p.date_order).toLocaleDateString()}</div>
                         </div>
                       </div>
                     );
                   })
                 )}
               </div>
-              {data.queue.length > 5 && (
+              {data.odooOrders.length > 5 && (
                 <button 
                   onClick={() => setActiveView('orders')}
                   className="w-full mt-4 py-2 text-xs font-bold text-odoo-purple hover:bg-odoo-purple/5 rounded-lg transition-colors"
@@ -933,8 +979,17 @@ export default function App() {
                   onClick={() => setIsOrderModalOpen(true)}
                   className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
                 >
-                  <Plus className="w-4 h-4" />
-                  Crear Pedido
+                  {newOrder.lines.length > 0 ? (
+                    <>
+                      <ShoppingCart className="w-4 h-4" />
+                      Ver Pedido ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Crear Pedido
+                    </>
+                  )}
                 </button>
                 <button 
                   onClick={loadExplorerData} 
@@ -994,11 +1049,7 @@ export default function App() {
                   </div>
                   <button 
                     onClick={() => {
-                      setNewOrder(prev => ({
-                        ...prev,
-                        lines: [...prev.lines, { product_id: p.id, qty: 1 }]
-                      }));
-                      setIsOrderModalOpen(true);
+                      setSelectedProductForCart({ product: p, qty: 1, comment: '' });
                     }}
                     className="w-full mt-3 py-2 bg-gray-50 hover:bg-odoo-purple hover:text-white border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
                   >
@@ -1018,8 +1069,17 @@ export default function App() {
                   onClick={() => setIsOrderModalOpen(true)}
                   className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
                 >
-                  <Plus className="w-4 h-4" />
-                  Crear Pedido
+                  {newOrder.lines.length > 0 ? (
+                    <>
+                      <ShoppingCart className="w-4 h-4" />
+                      Ver Pedido ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Crear Pedido
+                    </>
+                  )}
                 </button>
                 <button 
                   onClick={loadAll} 
@@ -1045,25 +1105,92 @@ export default function App() {
               </div>
             )}
 
-            {data.queue.map((p, i) => (
-              <div key={i} className="bg-white border border-border-light rounded-2xl p-4 shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple">
-                    <History className="w-6 h-6" />
+            <div className="flex gap-2 mb-4 border-b border-border-light pb-2">
+              <button 
+                onClick={() => setOrderTab('all')}
+                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${orderTab === 'all' ? 'bg-odoo-purple/10 text-odoo-purple' : 'text-text-muted hover:bg-gray-50'}`}
+              >
+                Todos
+              </button>
+              <button 
+                onClick={() => setOrderTab('sent')}
+                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${orderTab === 'sent' ? 'bg-odoo-purple/10 text-odoo-purple' : 'text-text-muted hover:bg-gray-50'}`}
+              >
+                Enviados
+              </button>
+              <button 
+                onClick={() => setOrderTab('draft')}
+                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${orderTab === 'draft' ? 'bg-odoo-purple/10 text-odoo-purple' : 'text-text-muted hover:bg-gray-50'}`}
+              >
+                Borradores
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {(orderTab === 'all' || orderTab === 'draft') && (newOrder.lines.length > 0 || newOrder.partner_id > 0) && (
+                <div className="bg-odoo-amber/5 border border-odoo-amber/20 rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer hover:bg-odoo-amber/10 transition-colors" onClick={() => setIsOrderModalOpen(true)}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-odoo-amber/10 flex items-center justify-center text-odoo-amber">
+                      <Edit2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-text-main">Borrador Local (Sin enviar)</div>
+                      <div className="text-[10px] text-text-muted font-medium">
+                        {newOrder.lines.reduce((acc, l) => acc + l.qty, 0)} productos en el carrito
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-bold text-text-main">{p.partner_nombre}</div>
-                    <div className="text-[10px] text-text-muted font-medium">{p.odoo_order_ref || 'Pendiente de Odoo'} · {timeAgo(p.created_at)}</div>
+                  <div className="text-right">
+                    <div className="text-sm font-black text-text-main">S/ {newOrder.lines.reduce((total, l) => {
+                      const product = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.products.find(p => p.id === l.product_id) : null;
+                      return total + ((product?.list_price || 0) * l.qty);
+                    }, 0).toFixed(2)}</div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-odoo-amber">
+                      Continuar Editando
+                    </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-black text-text-main">S/ {parseFloat(p.total as any || 0).toFixed(2)}</div>
-                  <div className={`text-[9px] font-bold uppercase tracking-widest ${p.estado === 'confirmed' ? 'text-odoo-green' : 'text-odoo-amber'}`}>
-                    {p.estado}
+              )}
+
+              {(() => {
+                const filteredOrders = data.odooOrders.filter(p => {
+                  if (orderTab === 'sent') return p.state === 'sale' || p.state === 'done' || p.state === 'sent';
+                  if (orderTab === 'draft') return p.state === 'draft';
+                  return true;
+                });
+                
+                const hasLocalDraft = (orderTab === 'all' || orderTab === 'draft') && (newOrder.lines.length > 0 || newOrder.partner_id > 0);
+
+                if (filteredOrders.length === 0 && !hasLocalDraft) {
+                  return (
+                    <div className="py-12 text-center text-text-muted bg-white rounded-2xl border border-border-light">
+                      <div className="text-3xl opacity-40 mb-3">📦</div>
+                      <p className="text-sm">No hay pedidos para mostrar en esta vista</p>
+                    </div>
+                  );
+                }
+
+                return filteredOrders.map((p, i) => (
+                  <div key={i} className="bg-white border border-border-light rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple">
+                        <History className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-text-main">{p.name}</div>
+                        <div className="text-[10px] text-text-muted font-medium">{p.partner_id?.[1] || 'Cliente Desconocido'} · {new Date(p.date_order).toLocaleDateString()}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-black text-text-main">S/ {parseFloat(p.amount_total || 0).toFixed(2)}</div>
+                      <div className={`text-[9px] font-bold uppercase tracking-widest ${p.state === 'sale' || p.state === 'done' ? 'text-odoo-green' : p.state === 'draft' ? 'text-odoo-amber' : 'text-text-muted'}`}>
+                        {p.state === 'draft' ? 'Borrador' : p.state === 'sale' ? 'Confirmado' : p.state === 'sent' ? 'Enviado' : p.state}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                ));
+              })()}
+            </div>
           </div>
         ) : activeView === 'partners' ? (
           <div className="max-w-4xl mx-auto space-y-4">
@@ -1074,8 +1201,17 @@ export default function App() {
                   onClick={() => setIsOrderModalOpen(true)}
                   className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
                 >
-                  <Plus className="w-4 h-4" />
-                  Crear Pedido
+                  {newOrder.lines.length > 0 ? (
+                    <>
+                      <ShoppingCart className="w-4 h-4" />
+                      Ver Pedido ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Crear Pedido
+                    </>
+                  )}
                 </button>
                 <button 
                   onClick={loadExplorerData} 
@@ -1715,18 +1851,7 @@ export default function App() {
                           </div>
                           <button 
                             onClick={() => {
-                              const existing = newOrder.lines.find(l => l.product_id === p.id);
-                              if (existing) {
-                                setNewOrder(prev => ({
-                                  ...prev,
-                                  lines: prev.lines.map(l => l.product_id === p.id ? { ...l, qty: l.qty + 1 } : l)
-                                }));
-                              } else {
-                                setNewOrder(prev => ({
-                                  ...prev,
-                                  lines: [...prev.lines, { product_id: p.id, qty: 1 }]
-                                }));
-                              }
+                              setSelectedProductForCart({ product: p, qty: 1, comment: '' });
                             }}
                             className="p-2 bg-odoo-purple/10 text-odoo-purple rounded-lg hover:bg-odoo-purple hover:text-white transition-all"
                           >
@@ -1779,7 +1904,10 @@ export default function App() {
                                   +
                                 </button>
                               </div>
-                              <span className="text-xs font-bold text-text-main">{product?.name}</span>
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold text-text-main">{product?.name}</span>
+                                {l.comment && <span className="text-[10px] text-text-muted italic">Nota: {l.comment}</span>}
+                              </div>
                             </div>
                             <div className="flex items-center gap-4">
                               <span className="text-xs font-bold text-odoo-purple">
@@ -1795,6 +1923,17 @@ export default function App() {
                           </div>
                         );
                       })}
+                      
+                      <div className="mt-4 space-y-2">
+                        <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Nota General del Pedido (Opcional)</label>
+                        <textarea 
+                          value={newOrder.note || ''}
+                          onChange={(e) => setNewOrder(prev => ({ ...prev, note: e.target.value }))}
+                          placeholder="Instrucciones de entrega, referencias..."
+                          className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none resize-none h-20"
+                        />
+                      </div>
+
                       <div className="flex justify-between items-center p-3 mt-2 bg-gray-50 rounded-xl border border-border-light">
                         <span className="text-xs font-bold text-text-muted uppercase">Total Estimado</span>
                         <span className="text-sm font-bold text-text-main">
@@ -1811,18 +1950,137 @@ export default function App() {
 
               <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
                 <button 
-                  onClick={() => setIsOrderModalOpen(false)}
-                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
+                  onClick={saveAsDraft}
+                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
                 >
-                  Cancelar
+                  <Save className="w-4 h-4" />
+                  Guardar Borrador
                 </button>
                 <button 
-                  onClick={createOdooOrder}
+                  onClick={() => setShowConfirmOrder(true)}
                   disabled={isCreatingOrder || !newOrder.partner_id || newOrder.lines.length === 0}
                   className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-green/20 flex items-center justify-center gap-2"
                 >
-                  {isCreatingOrder ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShoppingCart className="w-5 h-5" />}
-                  Confirmar y Enviar a Odoo
+                  <ShoppingCart className="w-5 h-5" />
+                  Enviar a Odoo
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Modal for Product Quantity and Comment */}
+        {selectedProductForCart && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
+                <h3 className="text-lg font-bold text-text-main font-display">Agregar al Pedido</h3>
+                <button onClick={() => setSelectedProductForCart(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                  <XCircle className="w-6 h-6 text-text-muted" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <div className="text-sm font-bold text-text-main">{selectedProductForCart.product.name}</div>
+                  <div className="text-xs text-text-muted mt-1">Precio: S/ {selectedProductForCart.product.list_price?.toFixed(2)}</div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Cantidad</label>
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: Math.max(1, prev.qty - 1) } : null)}
+                      className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
+                    >
+                      -
+                    </button>
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={selectedProductForCart.qty}
+                      onChange={(e) => setSelectedProductForCart(prev => prev ? { ...prev, qty: parseInt(e.target.value) || 1 } : null)}
+                      className="flex-1 h-10 text-center border border-border-light rounded-xl font-bold text-text-main focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    />
+                    <button 
+                      onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: prev.qty + 1 } : null)}
+                      className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Comentario (Opcional)</label>
+                  <textarea 
+                    value={selectedProductForCart.comment}
+                    onChange={(e) => setSelectedProductForCart(prev => prev ? { ...prev, comment: e.target.value } : null)}
+                    placeholder="Ej. Color rojo, talla M..."
+                    className="w-full p-3 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none resize-none h-24"
+                  />
+                </div>
+              </div>
+              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+                <button 
+                  onClick={() => {
+                    setNewOrder(prev => {
+                      const existingIndex = prev.lines.findIndex(l => l.product_id === selectedProductForCart.product.id && l.comment === selectedProductForCart.comment);
+                      if (existingIndex >= 0) {
+                        const newLines = [...prev.lines];
+                        newLines[existingIndex].qty += selectedProductForCart.qty;
+                        return { ...prev, lines: newLines };
+                      } else {
+                        return {
+                          ...prev,
+                          lines: [...prev.lines, { product_id: selectedProductForCart.product.id, qty: selectedProductForCart.qty, comment: selectedProductForCart.comment }]
+                        };
+                      }
+                    });
+                    setSelectedProductForCart(null);
+                  }}
+                  className="w-full py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20"
+                >
+                  Agregar al Carrito
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Modal for Order Confirmation */}
+        {showConfirmOrder && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col text-center p-8"
+            >
+              <div className="w-16 h-16 bg-odoo-amber/10 text-odoo-amber rounded-full flex items-center justify-center mx-auto mb-4">
+                <ShoppingCart className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-text-main font-display mb-2">¿Enviar pedido a Odoo?</h3>
+              <p className="text-sm text-text-muted mb-6">
+                Estás a punto de enviar este pedido a Odoo Ventas. Asegúrate de que los productos y cantidades sean correctos.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowConfirmOrder(false)}
+                  className="flex-1 py-3 bg-gray-100 text-text-main rounded-xl text-sm font-bold hover:bg-gray-200 transition-all"
+                >
+                  Revisar
+                </button>
+                <button 
+                  onClick={() => createOdooOrder(true)}
+                  disabled={isCreatingOrder}
+                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2"
+                >
+                  {isCreatingOrder ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sí, Enviar'}
                 </button>
               </div>
             </motion.div>
