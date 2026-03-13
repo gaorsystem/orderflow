@@ -28,6 +28,15 @@
   }
 }
 
+@layer utilities {
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+}
+
 @keyframes flow-anim {
   0%   { left: -30%; }
   100% { left: 100%; }

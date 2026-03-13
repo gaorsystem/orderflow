@@ -1098,20 +1098,18 @@ export default function App() {
           <h1 className="font-display text-base font-bold text-text-main">SalesMe</h1>
         </div>
         <div className="flex items-center gap-3">
-          <button className="p-2 text-text-muted relative">
-            <Bell className="w-5 h-5" />
+          <div className="flex flex-col items-end mr-1">
+            <span className="text-[9px] font-bold opacity-70 uppercase tracking-widest text-text-muted">Vendedor</span>
+            <span className="text-[11px] font-bold text-text-main leading-tight">{loggedInUser?.name?.split(' ')[0]}</span>
+          </div>
+          <button className="p-2 text-text-muted relative bg-gray-50 rounded-full">
+            <Bell className="w-4 h-4" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-odoo-red rounded-full border-2 border-white" />
-          </button>
-          <button 
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 text-text-main"
-          >
-            <Menu className="w-6 h-6" />
           </button>
         </div>
       </header>
 
-      <main className="flex-1 p-4 md:p-8 overflow-x-hidden pb-24 md:pb-8">
+      <main className="flex-1 p-4 md:p-8 overflow-x-hidden pb-28 md:pb-8">
         {activeView === 'dashboard' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-auto max-w-7xl mx-auto">
             {/* KPIs */}
@@ -1277,48 +1275,41 @@ export default function App() {
           </div>
         ) : activeView === 'catalog' ? (
           <div className="max-w-6xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h2 className="text-xl font-bold text-text-main font-display">Catálogo de Productos</h2>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={loadExplorerData}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Actualizar Catálogo"
-                >
-                  <RefreshCw className={`w-4 h-4 text-text-muted ${isExplorerLoading ? 'animate-spin' : ''}`} />
-                </button>
+              <div className="flex flex-wrap items-center gap-2">
                 <button 
                   onClick={() => setIsOrderModalOpen(true)}
-                  className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
+                  className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-odoo-purple text-white rounded-xl md:rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20 md:shadow-none"
                 >
                   {newOrder.lines.length > 0 ? (
                     <>
-                      <ShoppingCart className="w-4 h-4" />
+                      <ShoppingCart className="w-5 h-5 md:w-4 md:h-4" />
                       Ver Cotización ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-5 h-5 md:w-4 md:h-4" />
                       Crear Cotización
                     </>
                   )}
                 </button>
                 <button 
                   onClick={loadExplorerData} 
-                  className="p-2 bg-white border border-border-light rounded-lg text-text-muted hover:bg-gray-50 transition-colors"
+                  className="p-3 md:p-2 bg-white border border-border-light rounded-xl md:rounded-lg text-text-muted hover:bg-gray-50 transition-colors flex-shrink-0"
                   title="Sincronizar Catálogo"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isExplorerLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-5 h-5 md:w-4 md:h-4 ${isExplorerLoading ? 'animate-spin' : ''}`} />
                 </button>
-                <button className="p-2 bg-white border border-border-light rounded-lg text-text-muted">
-                  <Filter className="w-4 h-4" />
+                <button className="p-3 md:p-2 bg-white border border-border-light rounded-xl md:rounded-lg text-text-muted flex-shrink-0">
+                  <Filter className="w-5 h-5 md:w-4 md:h-4" />
                 </button>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                <div className="relative w-full md:w-auto mt-2 md:mt-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 md:w-4 md:h-4 text-text-muted" />
                   <input 
                     type="text" 
-                    placeholder="Buscar..."
-                    className="pl-9 pr-4 py-2 bg-white border border-border-light rounded-lg text-sm outline-none focus:ring-2 focus:ring-odoo-purple/20"
+                    placeholder="Buscar producto..."
+                    className="w-full pl-10 pr-4 py-3 md:py-2 bg-white border border-border-light rounded-xl md:rounded-lg text-sm outline-none focus:ring-2 focus:ring-odoo-purple/20"
                   />
                 </div>
               </div>
@@ -1372,9 +1363,9 @@ export default function App() {
                     onClick={() => {
                       setSelectedProductForCart({ product: p, qty: 1, comment: '' });
                     }}
-                    className="w-full mt-3 py-2 bg-gray-50 hover:bg-odoo-purple hover:text-white border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    className="w-full mt-3 py-3 md:py-2 bg-gray-50 hover:bg-odoo-purple hover:text-white border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
                   >
-                    <Plus className="w-3 h-3" />
+                    <Plus className="w-4 h-4 md:w-3 md:h-3" />
                     Agregar
                   </button>
                 </motion.div>
@@ -1383,31 +1374,31 @@ export default function App() {
           </div>
         ) : activeView === 'orders' ? (
           <div className="max-w-4xl mx-auto space-y-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
               <h2 className="text-xl font-bold text-text-main font-display">Mis Cotizaciones</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full md:w-auto">
                 <button 
                   onClick={() => setIsOrderModalOpen(true)}
-                  className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
+                  className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-odoo-purple text-white rounded-xl md:rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20 md:shadow-none"
                 >
                   {newOrder.lines.length > 0 ? (
                     <>
-                      <ShoppingCart className="w-4 h-4" />
+                      <ShoppingCart className="w-5 h-5 md:w-4 md:h-4" />
                       Ver Cotización ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-5 h-5 md:w-4 md:h-4" />
                       Crear Cotización
                     </>
                   )}
                 </button>
                 <button 
                   onClick={loadAll} 
-                  className="p-2 bg-white border border-border-light rounded-lg text-text-muted hover:bg-gray-50 transition-colors"
+                  className="p-3 md:p-2 bg-white border border-border-light rounded-xl md:rounded-lg text-text-muted hover:bg-gray-50 transition-colors flex-shrink-0"
                   title="Sincronizar Cotizaciones"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-5 h-5 md:w-4 md:h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
@@ -1515,49 +1506,42 @@ export default function App() {
           </div>
         ) : activeView === 'partners' ? (
           <div className="max-w-4xl mx-auto space-y-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
               <h2 className="text-xl font-bold text-text-main font-display">Mis Clientes</h2>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={loadExplorerData}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  title="Actualizar Clientes"
-                >
-                  <RefreshCw className={`w-4 h-4 text-text-muted ${isExplorerLoading ? 'animate-spin' : ''}`} />
-                </button>
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                 <button 
                   onClick={() => {
                     setEditingPartner(null);
                     setNewPartner({ name: '', email: '', phone: '', mobile: '', vat: '', street: '', city: '' });
                     setIsCreatePartnerModalOpen(true);
                   }}
-                  className="px-4 py-2 bg-odoo-green text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-green-dark transition-all shadow-md shadow-odoo-green/20"
+                  className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-odoo-green text-white rounded-xl md:rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-odoo-green-dark transition-all shadow-lg shadow-odoo-green/20 md:shadow-none"
                 >
-                  <UserPlus className="w-4 h-4" />
+                  <UserPlus className="w-5 h-5 md:w-4 md:h-4" />
                   Nuevo Cliente
                 </button>
                 <button 
                   onClick={() => setIsOrderModalOpen(true)}
-                  className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
+                  className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-odoo-purple text-white rounded-xl md:rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20 md:shadow-none"
                 >
                   {newOrder.lines.length > 0 ? (
                     <>
-                      <ShoppingCart className="w-4 h-4" />
+                      <ShoppingCart className="w-5 h-5 md:w-4 md:h-4" />
                       Ver Cotización ({newOrder.lines.reduce((acc, l) => acc + l.qty, 0)})
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-5 h-5 md:w-4 md:h-4" />
                       Crear Cotización
                     </>
                   )}
                 </button>
                 <button 
                   onClick={loadExplorerData} 
-                  className="p-2 bg-white border border-border-light rounded-lg text-text-muted hover:bg-gray-50 transition-colors"
+                  className="p-3 md:p-2 bg-white border border-border-light rounded-xl md:rounded-lg text-text-muted hover:bg-gray-50 transition-colors flex-shrink-0"
                   title="Sincronizar Clientes"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isExplorerLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-5 h-5 md:w-4 md:h-4 ${isExplorerLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
@@ -1620,16 +1604,16 @@ export default function App() {
           </div>
         ) : activeView === 'users' ? (
           <div className="max-w-4xl mx-auto space-y-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
               <h2 className="text-xl font-bold text-text-main font-display">Gestión de Personal Odoo</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
                 {userTab === 'users' && (
                   <button 
                     onClick={syncUsers}
                     disabled={isSyncingUsers}
-                    className="flex items-center gap-2 px-4 py-2 bg-odoo-purple text-white rounded-xl text-xs font-bold hover:bg-odoo-purple/90 transition-all shadow-sm disabled:opacity-50"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-odoo-purple text-white rounded-xl md:rounded-lg text-sm font-bold hover:bg-odoo-purple/90 transition-all shadow-lg shadow-odoo-purple/20 md:shadow-sm disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-5 h-5 md:w-4 md:h-4 ${isSyncingUsers ? 'animate-spin' : ''}`} />
                     Sincronizar Usuarios
                   </button>
                 )}
@@ -1637,18 +1621,18 @@ export default function App() {
                   <button 
                     onClick={syncEmployees}
                     disabled={isSyncingEmployees}
-                    className="flex items-center gap-2 px-4 py-2 bg-odoo-green text-white rounded-xl text-xs font-bold hover:bg-odoo-green/90 transition-all shadow-sm disabled:opacity-50"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-odoo-green text-white rounded-xl md:rounded-lg text-sm font-bold hover:bg-odoo-green/90 transition-all shadow-lg shadow-odoo-green/20 md:shadow-sm disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isSyncingEmployees ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-5 h-5 md:w-4 md:h-4 ${isSyncingEmployees ? 'animate-spin' : ''}`} />
                     Sincronizar con Dashboard
                   </button>
                 )}
                 <button 
                   onClick={loadOdooUsersAndEmployees} 
-                  className="p-2 bg-white border border-border-light rounded-lg text-text-muted hover:bg-gray-50 transition-colors"
+                  className="p-3 md:p-2 bg-white border border-border-light rounded-xl md:rounded-lg text-text-muted hover:bg-gray-50 transition-colors flex-shrink-0"
                   title="Actualizar Datos"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isUsersLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-5 h-5 md:w-4 md:h-4 ${isUsersLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
             </div>
@@ -1994,6 +1978,54 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-border-light shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-50 pb-safe">
+        <div className="flex items-center justify-around h-16 px-2">
+          <button 
+            onClick={() => setActiveView('dashboard')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeView === 'dashboard' ? 'text-odoo-purple' : 'text-text-muted hover:text-text-main'}`}
+          >
+            <Activity className={`w-5 h-5 ${activeView === 'dashboard' ? 'fill-odoo-purple/20' : ''}`} />
+            <span className="text-[10px] font-bold">Monitor</span>
+          </button>
+          <button 
+            onClick={() => setActiveView('catalog')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeView === 'catalog' ? 'text-odoo-purple' : 'text-text-muted hover:text-text-main'}`}
+          >
+            <Package className={`w-5 h-5 ${activeView === 'catalog' ? 'fill-odoo-purple/20' : ''}`} />
+            <span className="text-[10px] font-bold">Catálogo</span>
+          </button>
+          <button 
+            onClick={() => setActiveView('orders')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 relative ${activeView === 'orders' ? 'text-odoo-purple' : 'text-text-muted hover:text-text-main'}`}
+          >
+            <div className="relative">
+              <ShoppingCart className={`w-5 h-5 ${activeView === 'orders' ? 'fill-odoo-purple/20' : ''}`} />
+              {newOrder.lines.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-odoo-red text-white text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                  {newOrder.lines.reduce((acc, l) => acc + l.qty, 0)}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] font-bold">Cotizar</span>
+          </button>
+          <button 
+            onClick={() => setActiveView('partners')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeView === 'partners' ? 'text-odoo-purple' : 'text-text-muted hover:text-text-main'}`}
+          >
+            <Users className={`w-5 h-5 ${activeView === 'partners' ? 'fill-odoo-purple/20' : ''}`} />
+            <span className="text-[10px] font-bold">Clientes</span>
+          </button>
+          <button 
+            onClick={() => setActiveView('settings')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeView === 'settings' ? 'text-odoo-purple' : 'text-text-muted hover:text-text-main'}`}
+          >
+            <Settings className={`w-5 h-5 ${activeView === 'settings' ? 'fill-odoo-purple/20' : ''}`} />
+            <span className="text-[10px] font-bold">Ajustes</span>
+          </button>
+        </div>
+      </nav>
       </>
       )}
 
@@ -2313,31 +2345,32 @@ export default function App() {
         )}
 
         {isOrderModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center md:p-6 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl w-full h-[95vh] md:h-auto md:max-w-2xl overflow-hidden flex flex-col md:max-h-[90vh]"
             >
-              <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
+              <div className="p-4 md:p-6 border-b border-border-light flex items-center justify-between bg-gray-50 sticky top-0 z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-odoo-green/10 flex items-center justify-center text-odoo-green">
                     <Plus className="w-6 h-6" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-text-main font-display">Crear Nueva Cotización</h3>
-                    <p className="text-xs text-text-muted">
+                    <p className="text-xs text-text-muted hidden md:block">
                       {activeExplorerCompanyId ? `Para: ${explorerCompanies.find(c => c.id === activeExplorerCompanyId)?.name || 'Compañía'}` : 'Busca productos, verifica stock y precio'}
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
                   <XCircle className="w-6 h-6 text-text-muted" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar pb-32 md:pb-6">
                 {/* Partner Selection */}
                 <div className="space-y-3">
                   <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Cliente (Partner)</label>
@@ -2489,7 +2522,7 @@ export default function App() {
                             onClick={() => {
                               setSelectedProductForCart({ product: p, qty: 1, comment: '' });
                             }}
-                            className="p-2 bg-odoo-purple/10 text-odoo-purple rounded-lg hover:bg-odoo-purple hover:text-white transition-all"
+                            className="p-3 md:p-2 bg-odoo-purple/10 text-odoo-purple rounded-xl md:rounded-lg hover:bg-odoo-purple hover:text-white transition-all"
                           >
                             <Plus className="w-5 h-5" />
                           </button>
@@ -2519,13 +2552,13 @@ export default function App() {
                         return (
                           <div key={i} className="flex items-center justify-between p-3 bg-odoo-purple/5 rounded-xl border border-odoo-purple/10">
                             <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-2 bg-white border border-border-light rounded-lg px-2 py-1">
+                              <div className="flex items-center gap-2 bg-white border border-border-light rounded-lg px-2 py-1 md:px-2 md:py-1">
                                 <button 
                                   onClick={() => setNewOrder(prev => ({
                                     ...prev,
                                     lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: Math.max(1, line.qty - 1) } : line)
                                   }))}
-                                  className="text-text-muted hover:text-odoo-purple"
+                                  className="text-text-muted hover:text-odoo-purple w-8 h-8 md:w-auto md:h-auto flex items-center justify-center"
                                 >
                                   -
                                 </button>
@@ -2535,7 +2568,7 @@ export default function App() {
                                     ...prev,
                                     lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: line.qty + 1 } : line)
                                   }))}
-                                  className="text-text-muted hover:text-odoo-purple"
+                                  className="text-text-muted hover:text-odoo-purple w-8 h-8 md:w-auto md:h-auto flex items-center justify-center"
                                 >
                                   +
                                 </button>
@@ -2584,18 +2617,19 @@ export default function App() {
                 )}
               </div>
 
-              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+              <div className="p-4 md:p-6 bg-white border-t border-border-light flex gap-3 sticky bottom-0 z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe">
                 <button 
                   onClick={saveAsDraft}
-                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-4 md:py-3 bg-gray-50 border border-border-light text-text-main rounded-2xl md:rounded-xl text-sm font-bold hover:bg-gray-100 transition-all flex items-center justify-center gap-2"
                 >
-                  <Save className="w-4 h-4" />
-                  Guardar Borrador
+                  <Save className="w-5 h-5 md:w-4 md:h-4" />
+                  <span className="hidden md:inline">Guardar Borrador</span>
+                  <span className="md:hidden">Borrador</span>
                 </button>
                 <button 
                   onClick={() => setShowConfirmOrder(true)}
                   disabled={isCreatingOrder || !newOrder.partner_id || newOrder.lines.length === 0}
-                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-green/20 flex items-center justify-center gap-2"
+                  className="flex-[2] py-4 md:py-3 bg-odoo-green text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all disabled:opacity-50 shadow-lg shadow-odoo-green/20 flex items-center justify-center gap-2"
                 >
                   <ShoppingCart className="w-5 h-5" />
                   Crear Cotización
@@ -2607,20 +2641,21 @@ export default function App() {
 
         {/* Modal for Product Quantity and Comment */}
         {selectedProductForCart && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[110] flex items-end md:items-center justify-center md:p-6 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
             >
-              <div className="p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
+              <div className="p-4 md:p-6 border-b border-border-light flex items-center justify-between bg-gray-50">
                 <h3 className="text-lg font-bold text-text-main font-display">Agregar a la Cotización</h3>
-                <button onClick={() => setSelectedProductForCart(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all">
+                <button onClick={() => setSelectedProductForCart(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
                   <XCircle className="w-6 h-6 text-text-muted" />
                 </button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-4 md:p-6 space-y-6">
                 <div>
                   <div className="text-sm font-bold text-text-main">{selectedProductForCart.product.name}</div>
                   <div className="text-xs text-text-muted mt-1">Precio: S/ {selectedProductForCart.product.list_price?.toFixed(2)}</div>
@@ -2631,7 +2666,7 @@ export default function App() {
                   <div className="flex items-center gap-4">
                     <button 
                       onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: Math.max(1, prev.qty - 1) } : null)}
-                      className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
+                      className="w-12 h-12 md:w-10 md:h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
                     >
                       -
                     </button>
@@ -2640,11 +2675,11 @@ export default function App() {
                       min="1"
                       value={selectedProductForCart.qty}
                       onChange={(e) => setSelectedProductForCart(prev => prev ? { ...prev, qty: parseInt(e.target.value) || 1 } : null)}
-                      className="flex-1 h-10 text-center border border-border-light rounded-xl font-bold text-text-main focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                      className="flex-1 h-12 md:h-10 text-center border border-border-light rounded-xl font-bold text-text-main focus:ring-2 focus:ring-odoo-purple/20 outline-none"
                     />
                     <button 
                       onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: prev.qty + 1 } : null)}
-                      className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
+                      className="w-12 h-12 md:w-10 md:h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
                     >
                       +
                     </button>
@@ -2661,7 +2696,7 @@ export default function App() {
                   />
                 </div>
               </div>
-              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+              <div className="p-4 md:p-6 bg-white border-t border-border-light flex gap-3 sticky bottom-0 z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe">
                 <button 
                   onClick={() => {
                     setNewOrder(prev => {
@@ -2679,7 +2714,7 @@ export default function App() {
                     });
                     setSelectedProductForCart(null);
                   }}
-                  className="w-full py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20"
+                  className="w-full py-4 md:py-3 bg-odoo-purple text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20"
                 >
                   Agregar al Carrito
                 </button>
@@ -2690,12 +2725,13 @@ export default function App() {
 
         {/* Modal for Order Confirmation */}
         {showConfirmOrder && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-6 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col text-center p-8"
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col text-center p-6 md:p-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-[max(2rem,env(safe-area-inset-bottom))]"
             >
               <div className="w-16 h-16 bg-odoo-amber/10 text-odoo-amber rounded-full flex items-center justify-center mx-auto mb-4">
                 <ShoppingCart className="w-8 h-8" />
@@ -2704,19 +2740,21 @@ export default function App() {
               <p className="text-sm text-text-muted mb-6">
                 Estás a punto de crear una cotización en Odoo Ventas. Asegúrate de que los productos y cantidades sean correctos.
               </p>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setShowConfirmOrder(false)}
-                  className="flex-1 py-3 bg-gray-100 text-text-main rounded-xl text-sm font-bold hover:bg-gray-200 transition-all"
-                >
-                  Revisar
-                </button>
+              <div className="flex flex-col gap-3">
                 <button 
                   onClick={() => createOdooOrder(false)}
                   disabled={isCreatingOrder}
-                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2"
+                  className="w-full py-4 md:py-3 bg-odoo-green text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-green/20"
                 >
-                  {isCreatingOrder ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sí, Crear'}
+                  {isCreatingOrder ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                  Sí, Crear Cotización
+                </button>
+                <button 
+                  onClick={() => setShowConfirmOrder(false)}
+                  disabled={isCreatingOrder}
+                  className="w-full py-4 md:py-3 bg-gray-100 text-text-main rounded-2xl md:rounded-xl text-sm font-bold hover:bg-gray-200 transition-all"
+                >
+                  Revisar
                 </button>
               </div>
             </motion.div>
@@ -2724,14 +2762,15 @@ export default function App() {
         )}
         {/* Modal for Create/Edit Partner */}
         {(isCreatePartnerModalOpen || isEditPartnerModalOpen) && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl w-full h-[90vh] md:h-auto md:max-w-lg overflow-hidden flex flex-col"
             >
-              <div className="p-6 bg-odoo-purple text-white flex items-center justify-between">
+              <div className="p-4 md:p-6 bg-odoo-purple text-white flex items-center justify-between sticky top-0 z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
                     <UserPlus className="w-6 h-6" />
@@ -2752,7 +2791,7 @@ export default function App() {
                 </button>
               </div>
               
-              <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh] custom-scrollbar">
+              <div className="p-4 md:p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar pb-32 md:pb-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Nombre Completo *</label>
@@ -2822,22 +2861,22 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+              <div className="p-4 md:p-6 bg-white border-t border-border-light flex gap-3 sticky bottom-0 z-10 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe">
                 <button 
                   onClick={() => {
                     setIsCreatePartnerModalOpen(false);
                     setIsEditPartnerModalOpen(false);
                   }}
-                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
+                  className="flex-1 py-4 md:py-3 bg-gray-50 border border-border-light text-text-main rounded-2xl md:rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
                 >
                   Cancelar
                 </button>
                 <button 
                   onClick={savePartner}
                   disabled={isSavingPartner}
-                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-green/20"
+                  className="flex-[2] py-4 md:py-3 bg-odoo-green text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-green/20"
                 >
-                  {isSavingPartner ? <RefreshCw className="w-4 h-4 animate-spin" /> : (isEditPartnerModalOpen ? 'Actualizar' : 'Crear Cliente')}
+                  {isSavingPartner ? <RefreshCw className="w-5 h-5 animate-spin" /> : (isEditPartnerModalOpen ? 'Actualizar' : 'Crear Cliente')}
                 </button>
               </div>
             </motion.div>
