@@ -2014,75 +2014,79 @@ export default function App() {
               </div>
             </div>
           </div>
-        ) : (activeView === 'visits' && loggedInUser?.role === 'admin') ? (
-          <div className="max-w-6xl mx-auto space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-text-main font-display">Registro de Visitas</h2>
-              <button 
-                onClick={() => setIsMapView(!isMapView)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-border-light rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-all"
-              >
-                {isMapView ? <List className="w-4 h-4" /> : <MapIcon className="w-4 h-4" />}
-                {isMapView ? 'Ver Tabla' : 'Ver Mapa'}
-              </button>
-            </div>
-            
-            {isMapView ? (
-              <div className="h-[600px] w-full rounded-2xl overflow-hidden border border-border-light shadow-sm">
-                <MapContainer center={[-12.0464, -77.0428]} zoom={12} style={{ height: '100%', width: '100%' }}>
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  />
-                  {visits.map((v, i) => (
-                    v.lat && v.lng && (
-                      <Marker key={i} position={[v.lat, v.lng]}>
-                        <Popup>
-                          <div className="text-xs">
-                            <div className="font-bold">{v.vendedores?.nombre}</div>
-                            <div>{v.visit_type}</div>
-                            <div>{new Date(v.created_at).toLocaleString()}</div>
-                          </div>
-                        </Popup>
-                      </Marker>
-                    )
-                  ))}
-                </MapContainer>
+        ) : activeView === 'visits' ? (
+          loggedInUser?.role === 'admin' ? (
+            <div className="max-w-6xl mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-text-main font-display">Registro de Visitas</h2>
+                <button 
+                  onClick={() => setIsMapView(!isMapView)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-border-light rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-all"
+                >
+                  {isMapView ? <List className="w-4 h-4" /> : <MapIcon className="w-4 h-4" />}
+                  {isMapView ? 'Ver Tabla' : 'Ver Mapa'}
+                </button>
               </div>
-            ) : (
-              <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-left">
-                  <thead className="bg-gray-50 border-b border-border-light">
-                    <tr>
-                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Vendedor</th>
-                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Fecha</th>
-                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Tipo</th>
-                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Ubicación</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-light">
+              
+              {isMapView ? (
+                <div className="h-[600px] w-full rounded-2xl overflow-hidden border border-border-light shadow-sm">
+                  <MapContainer center={[-12.0464, -77.0428]} zoom={12} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
                     {visits.map((v, i) => (
-                      <tr key={i} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 text-sm font-bold text-text-main">{v.vendedores?.nombre || 'Desconocido'}</td>
-                        <td className="px-6 py-4 text-sm text-text-muted">{new Date(v.created_at).toLocaleString()}</td>
-                        <td className="px-6 py-4 text-sm font-bold capitalize">{v.visit_type}</td>
-                        <td className="px-6 py-4">
-                          <a 
-                            href={`https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-odoo-purple hover:text-odoo-purple/80 font-bold text-xs"
-                          >
-                            Ver en Mapa
-                          </a>
-                        </td>
-                      </tr>
+                      v.lat && v.lng && (
+                        <Marker key={i} position={[v.lat, v.lng]}>
+                          <Popup>
+                            <div className="text-xs">
+                              <div className="font-bold">{v.vendedores?.nombre}</div>
+                              <div>{v.visit_type}</div>
+                              <div>{new Date(v.created_at).toLocaleString()}</div>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      )
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                  </MapContainer>
+                </div>
+              ) : (
+                <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left">
+                    <thead className="bg-gray-50 border-b border-border-light">
+                      <tr>
+                        <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Vendedor</th>
+                        <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Fecha</th>
+                        <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Tipo</th>
+                        <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Ubicación</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-light">
+                      {visits.map((v, i) => (
+                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 text-sm font-bold text-text-main">{v.vendedores?.nombre || 'Desconocido'}</td>
+                          <td className="px-6 py-4 text-sm text-text-muted">{new Date(v.created_at).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-sm font-bold capitalize">{v.visit_type}</td>
+                          <td className="px-6 py-4">
+                            <a 
+                              href={`https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-odoo-purple hover:text-odoo-purple/80 font-bold text-xs"
+                            >
+                              Ver en Mapa
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 text-center text-text-muted">No tienes permiso para ver esta sección.</div>
+          )
         ) : activeView === 'devices' ? (
           <div className="max-w-4xl mx-auto space-y-4">
             <h2 className="text-xl font-bold text-text-main font-display">Gestión de Dispositivos</h2>
