@@ -289,6 +289,9 @@ export default function App() {
         setLoggedInUser(user);
         localStorage.setItem('salesme_user', JSON.stringify(user));
         setLoginForm({ email: '', password: '' });
+        if (user.company_id) {
+          setActiveExplorerCompanyId(user.company_id);
+        }
       } else {
         alert('Error de login: ' + data.error);
       }
@@ -303,6 +306,8 @@ export default function App() {
     setLoggedInUser(null);
     localStorage.removeItem('salesme_user');
     setActiveView('monitor');
+    setExplorerData({});
+    setActiveExplorerCompanyId(null);
   };
 
   const savePartner = async () => {
@@ -584,6 +589,65 @@ export default function App() {
     }
   };
 
+  const [isSyncingProducts, setIsSyncingProducts] = useState(false);
+  const [isSyncingPartners, setIsSyncingPartners] = useState(false);
+
+  const syncProducts = async () => {
+    setIsSyncingProducts(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+      
+      const res = await fetch(`/api/odoo/sync-products${activeExplorerCompanyId ? `?companyId=${activeExplorerCompanyId}` : ''}`, {
+        method: 'POST',
+        headers
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Sincronización exitosa: ${data.count} productos sincronizados.`);
+        loadExplorerData();
+      } else {
+        alert('Error al sincronizar productos: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsSyncingProducts(false);
+    }
+  };
+
+  const syncPartners = async () => {
+    setIsSyncingPartners(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+      
+      const res = await fetch(`/api/odoo/sync-partners${activeExplorerCompanyId ? `?companyId=${activeExplorerCompanyId}` : ''}`, {
+        method: 'POST',
+        headers
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Sincronización exitosa: ${data.count} clientes sincronizados.`);
+        loadExplorerData();
+      } else {
+        alert('Error al sincronizar clientes: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsSyncingPartners(false);
+    }
+  };
+
   const discoverCompanies = async () => {
     setIsDiscovering(true);
     setConfigError(null);
@@ -760,25 +824,28 @@ export default function App() {
     try {
       // First, get companies if we don't have them
       let companies = explorerCompanies;
-      if (companies.length === 0) {
-        const cRes = await fetch('/api/odoo/companies', { headers });
-        const cData = await cRes.json();
-        if (cData.status === 'ok') {
-          companies = cData.companies;
-          setExplorerCompanies(companies);
-          if (companies.length > 0 && !activeExplorerCompanyId) {
-            if (loggedInUser) {
-              setActiveExplorerCompanyId(loggedInUser.company_id);
-            } else {
-              setActiveExplorerCompanyId(companies[0].id);
-            }
+      try {
+        if (companies.length === 0) {
+          const cRes = await fetch('/api/odoo/companies', { headers });
+          const cData = await cRes.json();
+          if (cData.status === 'ok') {
+            companies = cData.companies;
+            setExplorerCompanies(companies);
           }
         }
+      } catch (e) {
+        console.warn('Could not fetch companies list, using user company as fallback');
       }
 
-      if (companies.length > 0) {
-        const targetCompanyId = loggedInUser ? loggedInUser.company_id : (activeExplorerCompanyId || companies[0].id);
-        
+      // Determine target company ID
+      const targetCompanyId = activeExplorerCompanyId || (loggedInUser ? loggedInUser.company_id : (companies.length > 0 ? companies[0].id : null));
+      
+      if (targetCompanyId) {
+        // Ensure activeExplorerCompanyId is set for UI
+        if (!activeExplorerCompanyId) {
+          setActiveExplorerCompanyId(targetCompanyId);
+        }
+
         const [pRes, ptRes] = await Promise.all([
           fetch(`/api/odoo/products?companyId=${targetCompanyId}`, { headers }),
           fetch(`/api/odoo/partners?companyId=${targetCompanyId}`, { headers })
@@ -840,10 +907,16 @@ export default function App() {
   }, [activeView, activeExplorerCompanyId]);
 
   useEffect(() => {
-    if (activeTab === 'explorer' || activeView === 'catalog' || activeView === 'partners') {
+    if (activeTab === 'explorer' || activeView === 'catalog' || activeView === 'partners' || activeView === 'orders') {
       loadExplorerData();
     }
-  }, [activeTab, activeView, activeExplorerCompanyId]);
+  }, [activeTab, activeView, activeExplorerCompanyId, loggedInUser?.id]);
+
+  useEffect(() => {
+    if (isOrderModalOpen) {
+      loadExplorerData();
+    }
+  }, [isOrderModalOpen]);
 
   useEffect(() => {
     loadAll();
@@ -1208,6 +1281,13 @@ export default function App() {
               <h2 className="text-xl font-bold text-text-main font-display">Catálogo de Productos</h2>
               <div className="flex items-center gap-2">
                 <button 
+                  onClick={loadExplorerData}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Actualizar Catálogo"
+                >
+                  <RefreshCw className={`w-4 h-4 text-text-muted ${isExplorerLoading ? 'animate-spin' : ''}`} />
+                </button>
+                <button 
                   onClick={() => setIsOrderModalOpen(true)}
                   className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
                 >
@@ -1272,11 +1352,20 @@ export default function App() {
                   <div className="space-y-1">
                     <div className="text-[10px] font-bold text-odoo-purple uppercase tracking-wider">{p.default_code || 'SIN CÓDIGO'}</div>
                     <h3 className="text-sm font-bold text-text-main line-clamp-2 leading-tight h-10">{p.name}</h3>
-                    <div className="flex items-center justify-between pt-2">
-                      <div className="text-sm font-black text-text-main">S/ {p.list_price?.toFixed(2)}</div>
-                      <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.qty_available > 0 ? 'bg-odoo-green/10 text-odoo-green' : 'bg-odoo-red/10 text-odoo-red'}`}>
-                        {p.qty_available || 0} stock
+                    <div className="flex flex-col gap-1 pt-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-black text-text-main">S/ {p.list_price?.toFixed(2)}</div>
+                        <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.qty_available > 0 ? 'bg-odoo-green/10 text-odoo-green' : 'bg-odoo-red/10 text-odoo-red'}`}>
+                          {p.qty_available || 0} Real
+                        </div>
                       </div>
+                      {p.virtual_available !== undefined && p.virtual_available !== p.qty_available && (
+                        <div className="flex items-center justify-end">
+                          <div className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
+                            {p.virtual_available || 0} Proyectado
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button 
@@ -1429,6 +1518,13 @@ export default function App() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-text-main font-display">Mis Clientes</h2>
               <div className="flex items-center gap-2">
+                <button 
+                  onClick={loadExplorerData}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Actualizar Clientes"
+                >
+                  <RefreshCw className={`w-4 h-4 text-text-muted ${isExplorerLoading ? 'animate-spin' : ''}`} />
+                </button>
                 <button 
                   onClick={() => {
                     setEditingPartner(null);
@@ -1841,14 +1937,44 @@ export default function App() {
                   )}
 
                   {loggedInUser?.role === 'admin' && (
-                    <button 
-                      onClick={syncUsers}
-                      disabled={isSyncingUsers}
-                      className="w-full py-3 bg-odoo-green/10 text-odoo-green border border-odoo-green/20 rounded-xl text-sm font-bold hover:bg-odoo-green/20 transition-all flex items-center justify-center gap-2 mt-4"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isSyncingUsers ? 'animate-spin' : ''}`} />
-                      Sincronizar Usuarios de Odoo
-                    </button>
+                    <div className="space-y-3 mt-4">
+                      <button 
+                        onClick={syncUsers}
+                        disabled={isSyncingUsers}
+                        className="w-full py-3 bg-odoo-green/10 text-odoo-green border border-odoo-green/20 rounded-xl text-sm font-bold hover:bg-odoo-green/20 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Users className={`w-4 h-4 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+                        Sincronizar Usuarios de Odoo
+                      </button>
+                      
+                      <button 
+                        onClick={syncEmployees}
+                        disabled={isSyncingEmployees}
+                        className="w-full py-3 bg-odoo-purple/10 text-odoo-purple border border-odoo-purple/20 rounded-xl text-sm font-bold hover:bg-odoo-purple/20 transition-all flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${isSyncingEmployees ? 'animate-spin' : ''}`} />
+                        Sincronizar Vendedores (Empleados)
+                      </button>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <button 
+                          onClick={syncProducts}
+                          disabled={isSyncingProducts}
+                          className="py-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl text-sm font-bold hover:bg-blue-100 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Package className={`w-4 h-4 ${isSyncingProducts ? 'animate-spin' : ''}`} />
+                          Sync Productos
+                        </button>
+                        <button 
+                          onClick={syncPartners}
+                          disabled={isSyncingPartners}
+                          className="py-3 bg-orange-50 text-orange-600 border border-orange-100 rounded-xl text-sm font-bold hover:bg-orange-100 transition-all flex items-center justify-center gap-2"
+                        >
+                          <UserPlus className={`w-4 h-4 ${isSyncingPartners ? 'animate-spin' : ''}`} />
+                          Sync Clientes
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -2342,11 +2468,16 @@ export default function App() {
                           {p.default_code && <span className="text-[10px] text-text-muted font-mono bg-gray-100 px-2 py-0.5 rounded w-fit">{p.default_code}</span>}
                         </div>
                         <div className="flex items-center gap-6 text-right">
-                          <div className="flex flex-col">
+                          <div className="flex flex-col items-end">
                             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Stock</span>
                             <span className={`text-sm font-bold ${p.qty_available > 0 ? 'text-odoo-green' : 'text-odoo-red'}`}>
-                              {p.qty_available}
+                              {p.qty_available} Real
                             </span>
+                            {p.virtual_available !== undefined && p.virtual_available !== p.qty_available && (
+                              <span className="text-[9px] font-bold text-blue-600">
+                                {p.virtual_available} Proy.
+                              </span>
+                            )}
                           </div>
                           <div className="flex flex-col">
                             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Precio</span>

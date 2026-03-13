@@ -405,8 +405,91 @@ app.get("/api/odoo/products", async (req, res) => {
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'company_id'], kwargs);
+    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'virtual_available', 'company_id'], kwargs);
     res.json({ status: "ok", products });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/odoo/sync-products", async (req, res) => {
+  try {
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
+    
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
+    const domain: any[] = [['sale_ok', '=', true]];
+    const kwargs: any = { limit: 2000 };
+    
+    if (companyId) {
+      domain.push(['company_id', 'in', [companyId, false]]);
+      kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
+    }
+
+    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'virtual_available', 'company_id'], kwargs);
+    
+    const supabase = getSupabase();
+    if (!supabase) return res.json({ status: "ok", count: products.length, products });
+
+    let syncedCount = 0;
+    for (const p of products) {
+      const productData = {
+        odoo_id: p.id,
+        nombre: p.name,
+        codigo: p.default_code,
+        precio: p.list_price,
+        stock: p.qty_available,
+        stock_virtual: p.virtual_available,
+        company_id: Array.isArray(p.company_id) ? p.company_id[0] : p.company_id,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('productos').upsert(productData, { onConflict: 'odoo_id' });
+      if (!error) syncedCount++;
+    }
+
+    res.json({ status: "ok", count: syncedCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/odoo/sync-partners", async (req, res) => {
+  try {
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
+    
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
+    const domain: any[] = [['customer_rank', '>', 0]];
+    const kwargs: any = { limit: 2000 };
+    
+    if (companyId) {
+      domain.push(['company_id', 'in', [companyId, false]]);
+      kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
+    }
+
+    const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'mobile', 'vat', 'street', 'city', 'company_id'], kwargs);
+    
+    const supabase = getSupabase();
+    if (!supabase) return res.json({ status: "ok", count: partners.length, partners });
+
+    let syncedCount = 0;
+    for (const p of partners) {
+      const partnerData = {
+        odoo_id: p.id,
+        nombre: p.name,
+        email: p.email,
+        telefono: p.phone || p.mobile,
+        documento: p.vat,
+        direccion: p.street,
+        ciudad: p.city,
+        company_id: Array.isArray(p.company_id) ? p.company_id[0] : p.company_id,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase.from('clientes').upsert(partnerData, { onConflict: 'odoo_id' });
+      if (!error) syncedCount++;
+    }
+
+    res.json({ status: "ok", count: syncedCount });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
