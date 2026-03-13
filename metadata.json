@@ -1,5 +1,5 @@
 {
   "name": "SalesMe",
   "description": "SalesMe: Plataforma SaaS profesional desarrollada por GaorSystem Perú para hacer pedidos a Odoo de manera segura y confiable.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation"]
 }

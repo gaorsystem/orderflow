@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from './services/supabaseClient';
 import { 
   Settings, 
   RefreshCw, 
@@ -43,6 +44,20 @@ import {
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import L from 'leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+import { Map as MapIcon, List } from 'lucide-react';
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 // --- Types ---
 
@@ -192,10 +207,17 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isVisiting, setIsVisiting] = useState(false);
+  const [currentVisitId, setCurrentVisitId] = useState<string | null>(null);
   const [isUpdatingPartner, setIsUpdatingPartner] = useState(false);
   const [odooUsers, setOdooUsers] = useState<any[]>([]);
   const [odooEmployees, setOdooEmployees] = useState<any[]>([]);
   const [isUsersLoading, setIsUsersLoading] = useState(false);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [visits, setVisits] = useState<any[]>([]);
+  const [isDevicesLoading, setIsDevicesLoading] = useState(false);
+  const [isVisitsLoading, setIsVisitsLoading] = useState(false);
+  const [isMapView, setIsMapView] = useState(false);
   const [userTab, setUserTab] = useState<'users' | 'employees'>('users');
   const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number, comment?: string, price_unit?: number, price_change_reason?: string}[], note?: string}>({
     partner_id: 0,
@@ -225,6 +247,56 @@ export default function App() {
   const saveAsDraft = () => {
     setIsOrderModalOpen(false);
     alert('Cotización guardada como borrador localmente. Puedes continuar luego.');
+  };
+
+  const startVisit = async () => {
+    if (!navigator.geolocation) {
+      alert('Geolocalización no soportada');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const { data, error } = await supabase.from('vendor_visits').insert({
+        vendor_email: loggedInUser?.email,
+        company_id: loggedInUser?.company_id,
+        latitude,
+        longitude,
+        event_type: 'checkin'
+      }).select().single();
+      if (error) {
+        alert('Error al iniciar visita: ' + error.message);
+      } else {
+        setIsVisiting(true);
+        setCurrentVisitId(data.id);
+      }
+    }, (error) => {
+      alert('Error al obtener ubicación: ' + error.message);
+    });
+  };
+
+  const endVisit = async () => {
+    if (!navigator.geolocation) {
+      alert('Geolocalización no soportada');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      const { error } = await supabase.from('vendor_visits').insert({
+        vendor_email: loggedInUser?.email,
+        company_id: loggedInUser?.company_id,
+        latitude,
+        longitude,
+        event_type: 'checkout'
+      });
+      if (error) {
+        alert('Error al finalizar visita: ' + error.message);
+      } else {
+        setIsVisiting(false);
+        setCurrentVisitId(null);
+      }
+    }, (error) => {
+      alert('Error al obtener ubicación: ' + error.message);
+    });
   };
 
   const createOdooOrder = async (confirm: boolean = false) => {
@@ -307,6 +379,30 @@ export default function App() {
         if (user.company_id) {
           setActiveExplorerCompanyId(user.company_id);
         }
+        
+        // Register device
+        const registerDevice = async (email: string) => {
+          const { data: vendor } = await supabase
+            .from('vendedores')
+            .select('id')
+            .eq('email', email)
+            .single();
+          
+          if (vendor) {
+            const deviceId = localStorage.getItem('device_id') || Math.random().toString(36).substring(7);
+            localStorage.setItem('device_id', deviceId);
+            
+            await supabase
+              .from('dispositivos')
+              .upsert({
+                vendor_id: vendor.id,
+                device_id: deviceId,
+                device_name: navigator.userAgent,
+                last_login: new Date().toISOString()
+              }, { onConflict: 'vendor_id, device_id' });
+          }
+        };
+        registerDevice(user.email);
       } else {
         alert('Error de login: ' + data.error);
       }
@@ -425,7 +521,7 @@ export default function App() {
   const [explorerData, setExplorerData] = useState<Record<number, {products: any[], partners: any[]}>>({});
   const [explorerCompanies, setExplorerCompanies] = useState<{id: number, name: string}[]>([]);
   const [activeExplorerCompanyId, setActiveExplorerCompanyId] = useState<number | null>(null);
-  const [activeView, setActiveView] = useState<'dashboard' | 'catalog' | 'orders' | 'partners' | 'settings'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'catalog' | 'orders' | 'partners' | 'settings' | 'devices'>('dashboard');
   const [orderTab, setOrderTab] = useState<'all' | 'draft' | 'sent'>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
@@ -941,6 +1037,92 @@ export default function App() {
     }
   };
 
+  const loadDevices = async () => {
+    setIsDevicesLoading(true);
+    const { data, error } = await supabase
+      .from('dispositivos')
+      .select('*, vendedores(nombre, email)');
+    if (error) {
+      alert('Error al cargar dispositivos: ' + error.message);
+    } else {
+      setDevices(data || []);
+    }
+    setIsDevicesLoading(false);
+  };
+
+  const loadVisits = async () => {
+    setIsVisitsLoading(true);
+    const { data, error } = await supabase
+      .from('vendor_visits')
+      .select('*, vendedores(nombre)')
+      .order('created_at', { ascending: false });
+    if (error) {
+      alert('Error al cargar visitas: ' + error.message);
+    } else {
+      setVisits(data || []);
+    }
+    setIsVisitsLoading(false);
+  };
+
+  const deleteDevice = async (deviceId: string) => {
+    if (!confirm('¿Estás seguro de eliminar este dispositivo?')) return;
+    const { error } = await supabase
+      .from('dispositivos')
+      .delete()
+      .eq('id', deviceId);
+    if (error) {
+      alert('Error al eliminar dispositivo: ' + error.message);
+    } else {
+      loadDevices();
+    }
+  };
+
+  const registerVisit = async (type: 'checkin' | 'checkout') => {
+    if (!navigator.geolocation) {
+      alert('Tu navegador no soporta geolocalización.');
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      
+      const { data: vendor } = await supabase
+        .from('vendedores')
+        .select('id')
+        .eq('email', loggedInUser?.email)
+        .single();
+        
+      if (!vendor) return alert('Vendedor no encontrado');
+      
+      const { error } = await supabase
+        .from('vendor_visits')
+        .insert({
+          vendor_id: vendor.id,
+          company_id: loggedInUser?.company_id,
+          lat: latitude,
+          lng: longitude,
+          visit_type: type
+        });
+        
+      if (error) {
+        alert('Error al registrar visita: ' + error.message);
+      } else {
+        alert(`Visita (${type}) registrada correctamente.`);
+      }
+    }, (err) => {
+      alert('Error al obtener ubicación: ' + err.message);
+    });
+  };
+
+  useEffect(() => {
+    if (activeView === 'devices') {
+      loadDevices();
+    }
+    if (activeView === 'visits') {
+      loadVisits();
+    }
+  }, [activeView]);
+
   useEffect(() => {
     if (activeView === 'users') {
       loadOdooUsersAndEmployees();
@@ -1097,13 +1279,27 @@ export default function App() {
             >
               Clientes
             </button>
+            <button 
+              onClick={() => setActiveView('visits')}
+              className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'visits' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+            >
+              Visitas
+            </button>
             {loggedInUser?.role === 'admin' && (
-              <button 
-                onClick={() => setActiveView('users')}
-                className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'users' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
-              >
-                Vendedores
-              </button>
+              <>
+                <button 
+                  onClick={() => setActiveView('users')}
+                  className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'users' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+                >
+                  Vendedores
+                </button>
+                <button 
+                  onClick={() => setActiveView('devices')}
+                  className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'devices' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+                >
+                  Dispositivos
+                </button>
+              </>
             )}
             <button 
               onClick={() => setActiveView('settings')}
@@ -1157,13 +1353,21 @@ export default function App() {
             <section className="bg-white border border-border-light rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Resumen General</h2>
-                <button 
-                  onClick={() => setActiveView('catalog')}
-                  className="px-3 py-1 bg-odoo-purple/10 text-odoo-purple rounded-lg text-[10px] font-bold hover:bg-odoo-purple/20 transition-all flex items-center gap-1"
-                >
-                  <Plus className="w-3 h-3" />
-                  Nuevo Pedido
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={isVisiting ? endVisit : startVisit}
+                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${isVisiting ? 'bg-odoo-red/10 text-odoo-red hover:bg-odoo-red/20' : 'bg-odoo-green/10 text-odoo-green hover:bg-odoo-green/20'}`}
+                  >
+                    {isVisiting ? 'Finalizar Visita' : 'Iniciar Visita'}
+                  </button>
+                  <button 
+                    onClick={() => setActiveView('catalog')}
+                    className="px-3 py-1 bg-odoo-purple/10 text-odoo-purple rounded-lg text-[10px] font-bold hover:bg-odoo-purple/20 transition-all flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nuevo Pedido
+                  </button>
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -1320,6 +1524,18 @@ export default function App() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h2 className="text-xl font-bold text-text-main font-display">Catálogo de Productos</h2>
               <div className="flex flex-wrap items-center gap-2">
+                <button 
+                  onClick={() => registerVisit('checkin')}
+                  className="px-4 py-2 bg-odoo-green text-white rounded-lg text-xs font-bold hover:bg-odoo-green/90 transition-all"
+                >
+                  Check-in
+                </button>
+                <button 
+                  onClick={() => registerVisit('checkout')}
+                  className="px-4 py-2 bg-odoo-red text-white rounded-lg text-xs font-bold hover:bg-odoo-red/90 transition-all"
+                >
+                  Check-out
+                </button>
                 <button 
                   onClick={() => setIsOrderModalOpen(true)}
                   className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-odoo-purple text-white rounded-xl md:rounded-lg text-sm font-bold flex items-center justify-center gap-2 hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20 md:shadow-none"
@@ -1794,6 +2010,108 @@ export default function App() {
                 <strong>Sincronización de Empleados:</strong> Para que un empleado pueda usar SalesMe, debe tener un <strong>Usuario relacionado</strong> en Odoo. 
                 Si un empleado aparece como "Sin Usuario", debe crearle un usuario en Odoo y vincularlo en su ficha de empleado.
               </div>
+            </div>
+          </div>
+        ) : activeView === 'visits' ? (
+          <div className="max-w-6xl mx-auto space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-text-main font-display">Registro de Visitas</h2>
+              <button 
+                onClick={() => setIsMapView(!isMapView)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-border-light rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-all"
+              >
+                {isMapView ? <List className="w-4 h-4" /> : <MapIcon className="w-4 h-4" />}
+                {isMapView ? 'Ver Tabla' : 'Ver Mapa'}
+              </button>
+            </div>
+            
+            {isMapView ? (
+              <div className="h-[600px] w-full rounded-2xl overflow-hidden border border-border-light shadow-sm">
+                <MapContainer center={[-12.0464, -77.0428]} zoom={12} style={{ height: '100%', width: '100%' }}>
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  />
+                  {visits.map((v, i) => (
+                    v.lat && v.lng && (
+                      <Marker key={i} position={[v.lat, v.lng]}>
+                        <Popup>
+                          <div className="text-xs">
+                            <div className="font-bold">{v.vendedores?.nombre}</div>
+                            <div>{v.visit_type}</div>
+                            <div>{new Date(v.created_at).toLocaleString()}</div>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    )
+                  ))}
+                </MapContainer>
+              </div>
+            ) : (
+              <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b border-border-light">
+                    <tr>
+                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Vendedor</th>
+                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Fecha</th>
+                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Tipo</th>
+                      <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Ubicación</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-light">
+                    {visits.map((v, i) => (
+                      <tr key={i} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-bold text-text-main">{v.vendedores?.nombre || 'Desconocido'}</td>
+                        <td className="px-6 py-4 text-sm text-text-muted">{new Date(v.created_at).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-sm font-bold capitalize">{v.visit_type}</td>
+                        <td className="px-6 py-4">
+                          <a 
+                            href={`https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-odoo-purple hover:text-odoo-purple/80 font-bold text-xs"
+                          >
+                            Ver en Mapa
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : activeView === 'devices' ? (
+          <div className="max-w-4xl mx-auto space-y-4">
+            <h2 className="text-xl font-bold text-text-main font-display">Gestión de Dispositivos</h2>
+            <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50 border-b border-border-light">
+                  <tr>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Vendedor</th>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Dispositivo</th>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Último Acceso</th>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-light">
+                  {devices.map((d, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-sm font-bold text-text-main">{d.vendedores?.nombre || 'Desconocido'}</td>
+                      <td className="px-6 py-4 text-sm text-text-muted">{d.device_name}</td>
+                      <td className="px-6 py-4 text-sm text-text-muted">{new Date(d.last_login).toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <button 
+                          onClick={() => deleteDevice(d.id)}
+                          className="text-odoo-red hover:text-odoo-red/80 font-bold text-xs"
+                        >
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         ) : activeView === 'settings' ? (
@@ -2413,9 +2731,23 @@ export default function App() {
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
-                  <XCircle className="w-6 h-6 text-text-muted" />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => registerVisit('checkin')}
+                    className="px-3 py-1.5 bg-odoo-green text-white rounded-lg text-[10px] font-bold hover:bg-odoo-green/90 transition-all"
+                  >
+                    Check-in
+                  </button>
+                  <button 
+                    onClick={() => registerVisit('checkout')}
+                    className="px-3 py-1.5 bg-odoo-red text-white rounded-lg text-[10px] font-bold hover:bg-odoo-red/90 transition-all"
+                  >
+                    Check-out
+                  </button>
+                  <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
+                    <XCircle className="w-6 h-6 text-text-muted" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar pb-32 md:pb-6">
