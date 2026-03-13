@@ -619,6 +619,51 @@ app.get("/api/odoo/orders", async (req, res) => {
   }
 });
 
+app.get("/api/odoo/orders/:id", async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
+
+    const kwargs: any = { 
+      fields: ['id', 'name', 'partner_id', 'amount_total', 'state', 'date_order', 'note', 'order_line']
+    };
+    
+    if (companyId) {
+      kwargs.context = { 
+        company_id: companyId, 
+        allowed_company_ids: [companyId] 
+      };
+    }
+
+    const orders = await conn.searchRead('sale.order', [['id', '=', orderId]], kwargs.fields, kwargs);
+    if (!orders || orders.length === 0) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+    
+    const order = orders[0];
+    
+    // Fetch order lines
+    if (order.order_line && order.order_line.length > 0) {
+      const lineKwargs: any = {
+        fields: ['id', 'product_id', 'name', 'product_uom_qty', 'price_unit', 'price_subtotal']
+      };
+      if (companyId) {
+        lineKwargs.context = kwargs.context;
+      }
+      const lines = await conn.searchRead('sale.order.line', [['id', 'in', order.order_line]], lineKwargs.fields, lineKwargs);
+      order.lines_detail = lines;
+    } else {
+      order.lines_detail = [];
+    }
+
+    res.json({ status: "ok", order });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/odoo/orders", async (req, res) => {
   const { partner_id, order_line, company_id, confirm, note, price_modifications } = req.body;
   try {

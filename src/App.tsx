@@ -422,6 +422,32 @@ export default function App() {
   const [orderTab, setOrderTab] = useState<'all' | 'draft' | 'sent'>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
+  const [selectedOrderDetails, setSelectedOrderDetails] = useState<any>(null);
+  const [isLoadingOrderDetails, setIsLoadingOrderDetails] = useState(false);
+
+  const fetchOrderDetails = async (orderId: number) => {
+    setIsLoadingOrderDetails(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+      const res = await fetch(`/api/odoo/orders/${orderId}${activeExplorerCompanyId ? `?companyId=${activeExplorerCompanyId}` : ''}`, { headers });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setSelectedOrderDetails(data.order);
+      } else {
+        alert(data.error || 'Error al cargar detalles del pedido');
+      }
+    } catch (e) {
+      console.error('Error fetching order details:', e);
+      alert('Error de conexión');
+    } finally {
+      setIsLoadingOrderDetails(false);
+    }
+  };
 
 
   const handleConfigChange = (field: string, value: string) => {
@@ -1195,9 +1221,10 @@ export default function App() {
                       cancel: 'dim' 
                     };
                     return (
-                      <div 
+                      <button 
                         key={i}
-                        className="flex items-center gap-4 py-3 border-b border-border-light/40 last:border-0"
+                        onClick={() => fetchOrderDetails(p.id)}
+                        className="w-full flex items-center gap-4 py-3 border-b border-border-light/40 last:border-0 hover:bg-gray-50 text-left transition-colors"
                       >
                         <div className="w-10 h-10 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple font-bold text-[10px]">
                           SO
@@ -1213,7 +1240,7 @@ export default function App() {
                           <div className="text-sm font-black text-odoo-green">S/ {parseFloat(p.amount_total || 0).toFixed(2)}</div>
                           <div className="text-[9px] text-text-muted font-bold">{new Date(p.date_order).toLocaleDateString()}</div>
                         </div>
-                      </div>
+                      </button>
                     );
                   })
                 )}
@@ -1493,7 +1520,11 @@ export default function App() {
                 }
 
                 return filteredOrders.map((p, i) => (
-                  <div key={i} className="bg-white border border-border-light rounded-2xl p-4 shadow-sm flex items-center justify-between">
+                  <button 
+                    key={i} 
+                    onClick={() => fetchOrderDetails(p.id)}
+                    className="w-full bg-white border border-border-light rounded-2xl p-4 shadow-sm flex items-center justify-between hover:bg-gray-50 text-left transition-colors"
+                  >
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple">
                         <History className="w-6 h-6" />
@@ -1509,7 +1540,7 @@ export default function App() {
                         {p.state === 'draft' ? 'Borrador' : p.state === 'sale' ? 'Confirmado' : p.state === 'sent' ? 'Enviado' : p.state}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ));
               })()}
             </div>
@@ -2950,6 +2981,86 @@ export default function App() {
                 >
                   {isSavingPartner ? <RefreshCw className="w-5 h-5 animate-spin" /> : (isEditPartnerModalOpen ? 'Actualizar' : 'Crear Cliente')}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Order Details Modal */}
+        {selectedOrderDetails && (
+          <div className="fixed inset-0 z-[120] flex items-end md:items-center justify-center md:p-6 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, y: '100%' }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col h-[90vh] md:h-auto md:max-h-[90vh]"
+            >
+              <div className="p-4 md:p-6 border-b border-border-light flex items-center justify-between bg-gray-50 sticky top-0 z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-odoo-purple/10 flex items-center justify-center text-odoo-purple font-bold">
+                    SO
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-text-main font-display">{selectedOrderDetails.name}</h3>
+                    <div className="text-xs text-text-muted">{selectedOrderDetails.partner_id?.[1]}</div>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedOrderDetails(null)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
+                  <XCircle className="w-6 h-6 text-text-muted" />
+                </button>
+              </div>
+
+              <div className="p-4 md:p-6 overflow-y-auto flex-1 bg-gray-50/50">
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-white p-4 rounded-2xl border border-border-light shadow-sm">
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Total</div>
+                    <div className="text-xl font-black text-odoo-green">S/ {parseFloat(selectedOrderDetails.amount_total || 0).toFixed(2)}</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-border-light shadow-sm">
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Estado</div>
+                    <div className="text-sm font-bold text-text-main capitalize">{selectedOrderDetails.state === 'draft' ? 'Borrador' : selectedOrderDetails.state === 'sale' ? 'Confirmado' : selectedOrderDetails.state === 'sent' ? 'Enviado' : selectedOrderDetails.state}</div>
+                  </div>
+                  <div className="bg-white p-4 rounded-2xl border border-border-light shadow-sm col-span-2">
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Fecha</div>
+                    <div className="text-sm font-bold text-text-main">{new Date(selectedOrderDetails.date_order).toLocaleString()}</div>
+                  </div>
+                </div>
+
+                <h4 className="text-sm font-bold text-text-main mb-3 uppercase tracking-wider">Productos</h4>
+                <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm mb-6">
+                  {selectedOrderDetails.lines_detail && selectedOrderDetails.lines_detail.length > 0 ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-border-light">
+                          <th className="px-4 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">Producto</th>
+                          <th className="px-4 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider text-center">Cant.</th>
+                          <th className="px-4 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider text-right">P. Unit</th>
+                          <th className="px-4 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider text-right">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedOrderDetails.lines_detail.map((line: any, idx: number) => (
+                          <tr key={idx} className="border-b border-border-light/40 last:border-0 hover:bg-gray-50/50">
+                            <td className="px-4 py-3 text-sm font-medium text-text-main max-w-[150px] md:max-w-xs truncate" title={line.name}>{line.name}</td>
+                            <td className="px-4 py-3 text-sm text-text-muted text-center">{line.product_uom_qty}</td>
+                            <td className="px-4 py-3 text-sm text-text-muted text-right">S/ {parseFloat(line.price_unit || 0).toFixed(2)}</td>
+                            <td className="px-4 py-3 text-sm font-bold text-text-main text-right">S/ {parseFloat(line.price_subtotal || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="p-6 text-center text-text-muted text-sm">No hay detalles de productos disponibles.</div>
+                  )}
+                </div>
+
+                {selectedOrderDetails.note && (
+                  <>
+                    <h4 className="text-sm font-bold text-text-main mb-3 uppercase tracking-wider">Notas</h4>
+                    <div className="bg-white p-4 rounded-2xl border border-border-light shadow-sm text-sm text-text-muted whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: selectedOrderDetails.note }} />
+                  </>
+                )}
               </div>
             </motion.div>
           </div>
