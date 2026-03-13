@@ -87,7 +87,9 @@ interface OdooUser {
   email: string;
   company_id: number;
   company_name: string;
+  company_ids?: number[];
   password?: string; // Store password locally for headers
+  role: 'admin' | 'user';
 }
 
 interface DashboardData {
@@ -183,6 +185,10 @@ export default function App() {
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isUpdatingPartner, setIsUpdatingPartner] = useState(false);
+  const [odooUsers, setOdooUsers] = useState<any[]>([]);
+  const [odooEmployees, setOdooEmployees] = useState<any[]>([]);
+  const [isUsersLoading, setIsUsersLoading] = useState(false);
+  const [userTab, setUserTab] = useState<'users' | 'employees'>('users');
   const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number, comment?: string}[], note?: string}>({
     partner_id: 0,
     lines: [],
@@ -521,6 +527,7 @@ export default function App() {
   };
 
   const [isSyncingUsers, setIsSyncingUsers] = useState(false);
+  const [isSyncingEmployees, setIsSyncingEmployees] = useState(false);
 
   const syncUsers = async () => {
     setIsSyncingUsers(true);
@@ -546,6 +553,34 @@ export default function App() {
       alert('Error de red: ' + e.message);
     } finally {
       setIsSyncingUsers(false);
+    }
+  };
+
+  const syncEmployees = async () => {
+    setIsSyncingEmployees(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+      
+      const res = await fetch('/api/odoo/sync-employees', {
+        method: 'POST',
+        headers
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Sincronización exitosa: ${data.count} vendedores sincronizados con el Dashboard.`);
+        loadAll(); // Recargar datos del dashboard
+      } else {
+        alert('Error al sincronizar: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsSyncingEmployees(false);
     }
   };
 
@@ -769,6 +804,41 @@ export default function App() {
     }
   };
 
+  const loadOdooUsersAndEmployees = async () => {
+    setIsUsersLoading(true);
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (loggedInUser) {
+      headers['x-odoo-email'] = loggedInUser.email;
+      headers['x-odoo-password'] = loggedInUser.password;
+      headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+    }
+
+    try {
+      const targetCompanyId = activeExplorerCompanyId || (loggedInUser?.company_id);
+      
+      const [uRes, eRes] = await Promise.all([
+        fetch(`/api/odoo/users${targetCompanyId ? `?companyId=${targetCompanyId}` : ''}`, { headers }),
+        fetch(`/api/odoo/employees${targetCompanyId ? `?companyId=${targetCompanyId}` : ''}`, { headers })
+      ]);
+
+      const [uData, eData] = await Promise.all([uRes.json(), eRes.json()]);
+
+      if (uData.status === 'ok') setOdooUsers(uData.users || []);
+      if (eData.status === 'ok') setOdooEmployees(eData.employees || []);
+      
+    } catch (e) {
+      console.error('Error loading Odoo users/employees:', e);
+    } finally {
+      setIsUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView === 'users') {
+      loadOdooUsersAndEmployees();
+    }
+  }, [activeView, activeExplorerCompanyId]);
+
   useEffect(() => {
     if (activeTab === 'explorer' || activeView === 'catalog' || activeView === 'partners') {
       loadExplorerData();
@@ -913,6 +983,14 @@ export default function App() {
             >
               Clientes
             </button>
+            {loggedInUser?.role === 'admin' && (
+              <button 
+                onClick={() => setActiveView('users')}
+                className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'users' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+              >
+                Vendedores
+              </button>
+            )}
             <button 
               onClick={() => setActiveView('settings')}
               className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'settings' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
@@ -1442,6 +1520,152 @@ export default function App() {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : activeView === 'users' ? (
+          <div className="max-w-4xl mx-auto space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-text-main font-display">Gestión de Personal Odoo</h2>
+              <div className="flex items-center gap-2">
+                {userTab === 'users' && (
+                  <button 
+                    onClick={syncUsers}
+                    disabled={isSyncingUsers}
+                    className="flex items-center gap-2 px-4 py-2 bg-odoo-purple text-white rounded-xl text-xs font-bold hover:bg-odoo-purple/90 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+                    Sincronizar Usuarios
+                  </button>
+                )}
+                {userTab === 'employees' && (
+                  <button 
+                    onClick={syncEmployees}
+                    disabled={isSyncingEmployees}
+                    className="flex items-center gap-2 px-4 py-2 bg-odoo-green text-white rounded-xl text-xs font-bold hover:bg-odoo-green/90 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncingEmployees ? 'animate-spin' : ''}`} />
+                    Sincronizar con Dashboard
+                  </button>
+                )}
+                <button 
+                  onClick={loadOdooUsersAndEmployees} 
+                  className="p-2 bg-white border border-border-light rounded-lg text-text-muted hover:bg-gray-50 transition-colors"
+                  title="Actualizar Datos"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isUsersLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setUserTab('users')}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${userTab === 'users' ? 'bg-odoo-purple text-white shadow-md' : 'bg-white border border-border-light text-text-muted hover:bg-gray-50'}`}
+              >
+                Usuarios (Login)
+              </button>
+              <button
+                onClick={() => setUserTab('employees')}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${userTab === 'employees' ? 'bg-odoo-purple text-white shadow-md' : 'bg-white border border-border-light text-text-muted hover:bg-gray-50'}`}
+              >
+                Empleados (RRHH)
+              </button>
+            </div>
+
+            {explorerCompanies.length > 1 && (
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-2 custom-scrollbar">
+                <button
+                  onClick={() => setActiveExplorerCompanyId(null)}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeExplorerCompanyId === null ? 'bg-odoo-purple text-white shadow-md' : 'bg-white border border-border-light text-text-muted hover:bg-gray-50'}`}
+                >
+                  Todas las Compañías
+                </button>
+                {explorerCompanies.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => setActiveExplorerCompanyId(c.id)}
+                    className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeExplorerCompanyId === c.id ? 'bg-odoo-purple text-white shadow-md' : 'bg-white border border-border-light text-text-muted hover:bg-gray-50'}`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-border-light">
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">Nombre</th>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">{userTab === 'users' ? 'Login / Email' : 'Email Trabajo'}</th>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">{userTab === 'users' ? 'Compañía / Acceso' : 'Puesto'}</th>
+                    <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase tracking-wider">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-light">
+                  {isUsersLoading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center text-text-muted">
+                        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 opacity-20" />
+                        Cargando datos...
+                      </td>
+                    </tr>
+                  ) : (userTab === 'users' ? odooUsers : odooEmployees).length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center text-text-muted">
+                        No se encontraron registros.
+                      </td>
+                    </tr>
+                  ) : (userTab === 'users' ? odooUsers : odooEmployees).map((u, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-odoo-purple/10 flex items-center justify-center text-xs font-bold text-odoo-purple">
+                            {u.name.charAt(0)}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-text-main">{u.name}</div>
+                            {userTab === 'employees' && u.user_id && (
+                              <div className="text-[9px] text-odoo-green font-bold">✓ Tiene Usuario</div>
+                            )}
+                            {userTab === 'employees' && !u.user_id && (
+                              <div className="text-[9px] text-odoo-red font-bold">✗ Sin Usuario</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-text-muted">{userTab === 'users' ? u.login : (u.work_email || 'Sin email')}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium px-2 py-1 bg-gray-100 rounded-lg w-fit">
+                            {userTab === 'users' 
+                              ? (Array.isArray(u.company_id) ? u.company_id[1] : `ID: ${u.company_id}`)
+                              : (Array.isArray(u.job_id) ? u.job_id[1] : 'Sin puesto')}
+                          </span>
+                          {userTab === 'users' && u.company_ids && u.company_ids.length > 1 && (
+                            <span className="text-[9px] text-odoo-purple font-bold px-1">
+                              {u.company_ids.length} empresas permitidas
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${u.active ? 'bg-odoo-green/10 text-odoo-green' : 'bg-odoo-red/10 text-odoo-red'}`}>
+                          <span className={`w-1 h-1 rounded-full ${u.active ? 'bg-odoo-green' : 'bg-odoo-red'}`} />
+                          {u.active ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+              <div className="text-xs text-amber-800 leading-relaxed">
+                <strong>Sincronización de Empleados:</strong> Para que un empleado pueda usar SalesMe, debe tener un <strong>Usuario relacionado</strong> en Odoo. 
+                Si un empleado aparece como "Sin Usuario", debe crearle un usuario en Odoo y vincularlo en su ficha de empleado.
+              </div>
             </div>
           </div>
         ) : activeView === 'settings' ? (

@@ -264,8 +264,8 @@ class OdooConnection extends EventEmitter {
 
   constructor(cfg: any) {
     super();
-    if (!cfg.url || !cfg.db || !cfg.username || !cfg.password || (!cfg.companyId && !cfg.companyIds)) {
-      throw new Error('OdooConnection requiere: url, db, username, password, companyId(s)');
+    if (!cfg.url || !cfg.db || !cfg.username || !cfg.password) {
+      throw new Error('OdooConnection requiere: url, db, username, password');
     }
     this.cfg = {
       heartbeatMs: 60_000,
@@ -274,7 +274,7 @@ class OdooConnection extends EventEmitter {
       debug: false,
       ...cfg,
       url: cfg.url.replace(/\/+$/, ''), // quitar trailing slashes
-      companyIds: cfg.companyIds || [cfg.companyId],
+      companyIds: cfg.companyIds || (cfg.companyId ? [cfg.companyId] : null),
     };
     this._queue = new RequestQueue(this.cfg.concurrency);
     this._stats = { totalCalls: 0, successCalls: 0, errorCalls: 0, retryCalls: 0, authCount: 0, lastCallAt: null, connectedAt: null };
@@ -357,16 +357,21 @@ class OdooConnection extends EventEmitter {
   async execute(model: string, method: string, args: any[] = [], kwargs: any = {}) {
     if (!this.authenticated) await this.authenticate();
 
-    // Inyectar contexto de compañía automáticamente
+    // Inyectar contexto de compañía automáticamente si está definido
+    const context: any = {
+      lang: 'es_PE',
+      tz: 'America/Lima',
+      ...(kwargs.context || {}),
+    };
+
+    if (this.cfg.companyIds && this.cfg.companyIds.length > 0) {
+      context.allowed_company_ids = this.cfg.companyIds;
+      context.company_id = this.cfg.companyIds[0];
+    }
+
     kwargs = {
       ...kwargs,
-      context: {
-        lang: 'es_PE',
-        tz: 'America/Lima',
-        allowed_company_ids: this.cfg.companyIds,
-        company_id: this.cfg.companyIds[0],
-        ...(kwargs.context || {}),
-      },
+      context
     };
 
     return this._queue.add(() => this._doExecute(model, method, args, kwargs));
@@ -469,7 +474,7 @@ class OdooConnection extends EventEmitter {
 const connectionPool = new Map<string, OdooConnection>();
 
 function _poolKey(cfg: any) {
-  const cids = cfg.companyIds ? cfg.companyIds.join(',') : cfg.companyId;
+  const cids = cfg.companyIds ? cfg.companyIds.join(',') : (cfg.companyId || 'no-company');
   return `${cfg.url}::${cfg.db}::${cfg.username}::${cids}`;
 }
 

@@ -159,6 +159,7 @@ app.post("/api/odoo/login", async (req, res) => {
         email: "admin",
         company_id: 1,
         company_name: "Administración Central",
+        company_ids: [1],
         role: 'admin'
       }
     });
@@ -173,8 +174,7 @@ app.post("/api/odoo/login", async (req, res) => {
       url: odooUrl,
       db: odooDb,
       username: email,
-      password: password,
-      companyId: 1 // Default to 1 for auth check
+      password: password
     });
 
     if (!conn || !conn.uid) {
@@ -184,8 +184,8 @@ app.post("/api/odoo/login", async (req, res) => {
 
     console.log(`[Login] Exitoso: UID ${conn.uid} para ${email}. Obteniendo detalles...`);
 
-    // Get user details including company
-    const userDataArray = await conn.searchRead('res.users', [['id', '=', conn.uid]], ['name', 'company_id', 'email']);
+    // Get user details including company and allowed companies
+    const userDataArray = await conn.searchRead('res.users', [['id', '=', conn.uid]], ['name', 'company_id', 'email', 'company_ids']);
     
     if (!userDataArray || userDataArray.length === 0) {
       console.log(`[Login] Error: No se encontraron datos para UID ${conn.uid}`);
@@ -193,7 +193,7 @@ app.post("/api/odoo/login", async (req, res) => {
     }
 
     const userData = userDataArray[0];
-    console.log(`[Login] Datos obtenidos: ${userData.name} (${userData.email})`);
+    console.log(`[Login] Datos obtenidos: ${userData.name} (${userData.email}), Compañías permitidas: ${userData.company_ids}`);
     
     res.json({ 
       status: "ok", 
@@ -203,6 +203,7 @@ app.post("/api/odoo/login", async (req, res) => {
         email: userData.email,
         company_id: Array.isArray(userData.company_id) ? userData.company_id[0] : userData.company_id,
         company_name: Array.isArray(userData.company_id) ? userData.company_id[1] : `Compañía ${userData.company_id}`,
+        company_ids: userData.company_ids || [],
         role: 'user'
       }
     });
@@ -218,7 +219,7 @@ app.post("/api/odoo/sync-users", async (req, res) => {
     if (!conn) return res.status(400).json({ error: "Odoo no configurado o sesión inválida" });
 
     console.log("[Sync] Obteniendo usuarios de Odoo...");
-    const odooUsers = await conn.searchRead('res.users', [['share', '=', false]], ['name', 'login', 'email', 'company_id']);
+    const odooUsers = await conn.searchRead('res.users', [['share', '=', false]], ['name', 'login', 'email', 'company_id', 'company_ids']);
     
     const supabase = getSupabase();
     if (!supabase) {
@@ -234,6 +235,7 @@ app.post("/api/odoo/sync-users", async (req, res) => {
         email: user.login || user.email,
         company_id: Array.isArray(user.company_id) ? user.company_id[0] : user.company_id,
         company_name: Array.isArray(user.company_id) ? user.company_id[1] : null,
+        allowed_companies: user.company_ids || [],
         updated_at: new Date().toISOString()
       };
 
@@ -243,6 +245,43 @@ app.post("/api/odoo/sync-users", async (req, res) => {
     res.json({ status: "ok", message: "Sincronización completada", count: odooUsers.length });
   } catch (err: any) {
     console.error("[Sync] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/odoo/sync-employees", async (req, res) => {
+  try {
+    const conn = await getOdooConn(req);
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado o sesión inválida" });
+
+    console.log("[Sync] Obteniendo empleados de Odoo...");
+    const employees = await conn.searchRead('hr.employee', [], ['name', 'work_email', 'mobile_phone', 'work_phone', 'company_id', 'active']);
+    
+    const supabase = getSupabase();
+    if (!supabase) {
+      return res.json({ status: "ok", message: "Empleados obtenidos de Odoo (Supabase no configurado)", count: employees.length, employees });
+    }
+
+    console.log(`[Sync] Sincronizando ${employees.length} empleados con tabla vendedores...`);
+    
+    let syncedCount = 0;
+    for (const emp of employees) {
+      const sellerData = {
+        nombre: emp.name,
+        whatsapp_phone: emp.mobile_phone || emp.work_phone || '',
+        activo: emp.active,
+        company_id: Array.isArray(emp.company_id) ? emp.company_id[0] : emp.company_id,
+        updated_at: new Date().toISOString()
+      };
+
+      // Intentar upsert por nombre (asumiendo que es único para vendedores en esta app)
+      const { error } = await supabase.from('vendedores').upsert(sellerData, { onConflict: 'nombre' });
+      if (!error) syncedCount++;
+    }
+
+    res.json({ status: "ok", message: "Sincronización de vendedores completada", count: syncedCount });
+  } catch (err: any) {
+    console.error("[Sync Employees] Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -372,6 +411,44 @@ app.get("/api/odoo/partners", async (req, res) => {
 
     const partners = await conn.searchRead('res.partner', domain, ['name', 'email', 'phone', 'mobile', 'vat', 'street', 'city', 'company_id'], kwargs);
     res.json({ status: "ok", partners });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/odoo/employees", async (req, res) => {
+  try {
+    const conn = await getOdooConn(req);
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
+    const domain: any[] = [];
+    
+    if (companyId) {
+      domain.push(['company_id', '=', companyId]);
+    }
+
+    const employees = await conn.searchRead('hr.employee', domain, ['name', 'work_email', 'job_id', 'user_id', 'active'], { order: 'name asc' });
+    res.json({ status: "ok", employees });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/odoo/users", async (req, res) => {
+  try {
+    const conn = await getOdooConn(req);
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    
+    const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
+    const domain: any[] = [['share', '=', false]]; // Internal users only
+    
+    if (companyId) {
+      domain.push(['company_id', '=', companyId]);
+    }
+
+    const users = await conn.searchRead('res.users', domain, ['name', 'login', 'company_id', 'active'], { order: 'name asc' });
+    res.json({ status: "ok", users });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
