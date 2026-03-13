@@ -2800,25 +2800,33 @@ export default function App() {
               <div className="w-16 h-16 bg-odoo-amber/10 text-odoo-amber rounded-full flex items-center justify-center mx-auto mb-4">
                 <ShoppingCart className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black text-text-main font-display mb-2">¿Crear Cotización en Odoo?</h3>
+              <h3 className="text-xl font-black text-text-main font-display mb-2">¿Cómo deseas procesar el pedido?</h3>
               <p className="text-sm text-text-muted mb-6">
-                Estás a punto de crear una cotización en Odoo Ventas. Asegúrate de que los productos y cantidades sean correctos.
+                Puedes guardarlo como un borrador (Cotización) o confirmarlo directamente como una Orden de Venta.
               </p>
               <div className="flex flex-col gap-3">
                 <button 
-                  onClick={() => createOdooOrder(false)}
+                  onClick={() => createOdooOrder(true)}
                   disabled={isCreatingOrder}
                   className="w-full py-4 md:py-3 bg-odoo-green text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-green/20"
                 >
                   {isCreatingOrder ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                  Sí, Crear Cotización
+                  Confirmar Orden de Venta
+                </button>
+                <button 
+                  onClick={() => createOdooOrder(false)}
+                  disabled={isCreatingOrder}
+                  className="w-full py-4 md:py-3 bg-odoo-amber text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-amber/20"
+                >
+                  {isCreatingOrder ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ShoppingCart className="w-5 h-5" />}
+                  Guardar como Cotización
                 </button>
                 <button 
                   onClick={() => setShowConfirmOrder(false)}
                   disabled={isCreatingOrder}
-                  className="w-full py-4 md:py-3 bg-gray-100 text-text-main rounded-2xl md:rounded-xl text-sm font-bold hover:bg-gray-200 transition-all"
+                  className="w-full py-4 md:py-3 bg-gray-100 text-text-main rounded-2xl md:rounded-xl text-sm font-bold hover:bg-gray-200 transition-all mt-2"
                 >
-                  Revisar
+                  Cancelar / Revisar
                 </button>
               </div>
             </motion.div>
