@@ -33,14 +33,23 @@ const getSupabase = () => {
 };
 
 // --- Odoo Connection Helper ---
-const getOdooConn = async (customCfg?: any) => {
-  const cfg = customCfg || {
-    url: process.env.ODOO_URL,
-    db: process.env.ODOO_DB,
-    username: process.env.ODOO_USERNAME,
-    password: process.env.ODOO_PASSWORD,
-    companyIds: process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : [parseInt(process.env.ODOO_COMPANY_ID || "1")]
+const getOdooConn = async (req?: express.Request) => {
+  const email = req?.headers['x-odoo-email'] as string;
+  const password = req?.headers['x-odoo-password'] as string;
+  const companyId = req?.headers['x-odoo-company-id'] as string;
+
+  const cfg: any = {
+    url: process.env.ODOO_URL || 'https://marketperu.facturaclic.pe/',
+    db: process.env.ODOO_DB || 'marketperu_master',
+    username: email || process.env.ODOO_USERNAME,
+    password: password || process.env.ODOO_PASSWORD,
   };
+
+  if (companyId) {
+    cfg.companyIds = [parseInt(companyId)];
+  } else {
+    cfg.companyIds = process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : [parseInt(process.env.ODOO_COMPANY_ID || "1")];
+  }
 
   if (!cfg.url || !cfg.db || !cfg.username || !cfg.password) {
     return null;
@@ -50,11 +59,16 @@ const getOdooConn = async (customCfg?: any) => {
   if (url.endsWith('.')) url = url.slice(0, -1);
   if (url.endsWith('/')) url = url.slice(0, -1);
 
-  return await getConnection({
-    ...cfg,
-    url: url,
-    debug: true
-  });
+  try {
+    return await getConnection({
+      ...cfg,
+      url: url,
+      debug: true
+    });
+  } catch (e) {
+    console.error("Error connecting to Odoo:", e);
+    return null;
+  }
 };
 
 // --- API Routes ---
@@ -130,6 +144,109 @@ app.post("/api/odoo/diagnose", async (req, res) => {
   }
 });
 
+app.post("/api/odoo/login", async (req, res) => {
+  const { email, password } = req.body;
+  console.log(`[Login] Intentando login para: ${email}`);
+
+  // Hardcoded admin login
+  if (email === 'admin' && password === 'admin123') {
+    console.log("[Login] Admin login detectado");
+    return res.json({ 
+      status: "ok", 
+      user: {
+        uid: 0,
+        name: "Administrador",
+        email: "admin",
+        company_id: 1,
+        company_name: "Administración Central",
+        role: 'admin'
+      }
+    });
+  }
+  
+  const odooUrl = process.env.ODOO_URL || 'https://marketperu.facturaclic.pe/';
+  const odooDb = process.env.ODOO_DB || 'marketperu_master';
+
+  try {
+    console.log(`[Login] Usando URL: ${odooUrl}, DB: ${odooDb}`);
+    const conn = await getConnection({
+      url: odooUrl,
+      db: odooDb,
+      username: email,
+      password: password,
+      companyId: 1 // Default to 1 for auth check
+    });
+
+    if (!conn || !conn.uid) {
+      console.log(`[Login] Fallido: No se obtuvo UID para ${email}`);
+      return res.status(401).json({ error: "Credenciales incorrectas" });
+    }
+
+    console.log(`[Login] Exitoso: UID ${conn.uid} para ${email}. Obteniendo detalles...`);
+
+    // Get user details including company
+    const userDataArray = await conn.searchRead('res.users', [['id', '=', conn.uid]], ['name', 'company_id', 'email']);
+    
+    if (!userDataArray || userDataArray.length === 0) {
+      console.log(`[Login] Error: No se encontraron datos para UID ${conn.uid}`);
+      return res.status(500).json({ error: "No se pudieron obtener los datos del usuario" });
+    }
+
+    const userData = userDataArray[0];
+    console.log(`[Login] Datos obtenidos: ${userData.name} (${userData.email})`);
+    
+    res.json({ 
+      status: "ok", 
+      user: {
+        uid: conn.uid,
+        name: userData.name,
+        email: userData.email,
+        company_id: Array.isArray(userData.company_id) ? userData.company_id[0] : userData.company_id,
+        company_name: Array.isArray(userData.company_id) ? userData.company_id[1] : `Compañía ${userData.company_id}`,
+        role: 'user'
+      }
+    });
+  } catch (err: any) {
+    console.error(`[Login] Error fatal para ${email}:`, err.message);
+    res.status(401).json({ error: err.message });
+  }
+});
+
+app.post("/api/odoo/sync-users", async (req, res) => {
+  try {
+    const conn = await getOdooConn(req);
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado o sesión inválida" });
+
+    console.log("[Sync] Obteniendo usuarios de Odoo...");
+    const odooUsers = await conn.searchRead('res.users', [['share', '=', false]], ['name', 'login', 'email', 'company_id']);
+    
+    const supabase = getSupabase();
+    if (!supabase) {
+      return res.json({ status: "ok", message: "Usuarios obtenidos de Odoo (Supabase no configurado)", count: odooUsers.length, users: odooUsers });
+    }
+
+    console.log(`[Sync] Sincronizando ${odooUsers.length} usuarios con Supabase...`);
+    
+    for (const user of odooUsers) {
+      const userData = {
+        odoo_id: user.id,
+        name: user.name,
+        email: user.login || user.email,
+        company_id: Array.isArray(user.company_id) ? user.company_id[0] : user.company_id,
+        company_name: Array.isArray(user.company_id) ? user.company_id[1] : null,
+        updated_at: new Date().toISOString()
+      };
+
+      await supabase.from('odoo_users').upsert(userData, { onConflict: 'email' });
+    }
+
+    res.json({ status: "ok", message: "Sincronización completada", count: odooUsers.length });
+  } catch (err: any) {
+    console.error("[Sync] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/odoo/discover", async (req, res) => {
   const { url, db, username, password } = req.body;
   console.log(`Attempting to discover companies for Odoo at ${url}, DB: ${db}, User: ${username}`);
@@ -193,6 +310,19 @@ app.post("/api/odoo/discover", async (req, res) => {
   }
 });
 
+app.get("/api/odoo/config", (req, res) => {
+  res.json({
+    status: "ok",
+    config: {
+      url: process.env.ODOO_URL || '',
+      db: process.env.ODOO_DB || '',
+      username: process.env.ODOO_USERNAME || '',
+      password: process.env.ODOO_PASSWORD || '',
+      companyIds: process.env.ODOO_COMPANY_IDS ? process.env.ODOO_COMPANY_IDS.split(',').map(Number) : []
+    }
+  });
+});
+
 app.post("/api/odoo/config", async (req, res) => {
   const { url, db, username, password, companyIds } = req.body;
   process.env.ODOO_URL = url;
@@ -208,7 +338,7 @@ app.post("/api/odoo/config", async (req, res) => {
 app.get("/api/odoo/products", async (req, res) => {
   try {
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
     
     const domain: any[] = [['sale_ok', '=', true]];
@@ -229,7 +359,7 @@ app.get("/api/odoo/products", async (req, res) => {
 app.get("/api/odoo/partners", async (req, res) => {
   try {
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
     const domain: any[] = [];
@@ -249,7 +379,7 @@ app.get("/api/odoo/partners", async (req, res) => {
 
 app.get("/api/odoo/companies", async (req, res) => {
   try {
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
     const companies = await conn.searchRead('res.company', [], ['name', 'id']);
     res.json({ status: "ok", companies });
@@ -260,7 +390,7 @@ app.get("/api/odoo/companies", async (req, res) => {
 
 app.get("/api/odoo/check-access", async (req, res) => {
   try {
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
     const models = ['res.partner', 'product.product', 'hr.employee', 'sale.order'];
@@ -284,7 +414,7 @@ app.get("/api/odoo/check-access", async (req, res) => {
 app.get("/api/odoo/orders", async (req, res) => {
   try {
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
     const domain: any[] = [];
@@ -315,7 +445,7 @@ app.get("/api/odoo/orders", async (req, res) => {
 app.post("/api/odoo/orders", async (req, res) => {
   const { partner_id, order_line, company_id, confirm, note } = req.body;
   try {
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
     const kwargs: any = {};
@@ -349,7 +479,7 @@ app.put("/api/odoo/partners/:id", async (req, res) => {
   const { id } = req.params;
   const { values, company_id } = req.body;
   try {
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
 
     const kwargs: any = {};
@@ -367,9 +497,30 @@ app.put("/api/odoo/partners/:id", async (req, res) => {
   }
 });
 
+app.post("/api/odoo/partners", async (req, res) => {
+  const { values, company_id } = req.body;
+  try {
+    const conn = await getOdooConn(req);
+    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+
+    const kwargs: any = {};
+    if (company_id) {
+      kwargs.context = { 
+        company_id: parseInt(company_id), 
+        allowed_company_ids: [parseInt(company_id)] 
+      };
+    }
+
+    const partnerId = await conn.create('res.partner', values, kwargs);
+    res.json({ status: "ok", partner_id: partnerId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/odoo/stats", async (req, res) => {
   try {
-    const conn = await getOdooConn();
+    const conn = await getOdooConn(req);
     if (!conn) {
       console.log("Odoo not configured, returning empty data");
       return res.json({ 

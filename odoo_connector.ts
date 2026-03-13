@@ -470,7 +470,7 @@ const connectionPool = new Map<string, OdooConnection>();
 
 function _poolKey(cfg: any) {
   const cids = cfg.companyIds ? cfg.companyIds.join(',') : cfg.companyId;
-  return `${cfg.url}::${cfg.db}::${cids}`;
+  return `${cfg.url}::${cfg.db}::${cfg.username}::${cids}`;
 }
 
 /**

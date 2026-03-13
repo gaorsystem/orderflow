@@ -38,6 +38,7 @@ import {
   MoreVertical,
   LogOut,
   User,
+  UserPlus,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -78,6 +79,15 @@ interface Seller {
   nombre: string;
   whatsapp_phone: string;
   activo: boolean;
+}
+
+interface OdooUser {
+  uid: number;
+  name: string;
+  email: string;
+  company_id: number;
+  company_name: string;
+  password?: string; // Store password locally for headers
 }
 
 interface DashboardData {
@@ -158,6 +168,16 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isEditPartnerModalOpen, setIsEditPartnerModalOpen] = useState(false);
+  const [isCreatePartnerModalOpen, setIsCreatePartnerModalOpen] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<OdooUser | null>(() => {
+    const saved = localStorage.getItem('salesme_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [newPartner, setNewPartner] = useState({ name: '', email: '', phone: '', mobile: '', vat: '', street: '', city: '' });
+  const [isSavingPartner, setIsSavingPartner] = useState(false);
+  
   const [editingPartner, setEditingPartner] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [partnerSearchQuery, setPartnerSearchQuery] = useState('');
@@ -200,9 +220,16 @@ export default function App() {
     }
     setIsCreatingOrder(true);
     try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+
       const res = await fetch('/api/odoo/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           partner_id: newOrder.partner_id,
           company_id: activeExplorerCompanyId,
@@ -225,7 +252,7 @@ export default function App() {
       });
       const data = await res.json();
       if (data.status === 'ok') {
-        alert(confirm ? 'Pedido enviado y confirmado con éxito en Odoo' : 'Cotización creada con éxito en Odoo');
+        alert(confirm ? 'Cotización enviada y confirmada con éxito en Odoo' : 'Cotización creada con éxito en Odoo');
         setNewOrder({ partner_id: 0, lines: [], note: '' });
         localStorage.removeItem('salesme_draft_order');
         setIsOrderModalOpen(false);
@@ -238,6 +265,78 @@ export default function App() {
       alert('Error de red: ' + e.message);
     } finally {
       setIsCreatingOrder(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoggingIn(true);
+    try {
+      const res = await fetch('/api/odoo/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm)
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        const user = { ...data.user, password: loginForm.password };
+        setLoggedInUser(user);
+        localStorage.setItem('salesme_user', JSON.stringify(user));
+        setLoginForm({ email: '', password: '' });
+      } else {
+        alert('Error de login: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setLoggedInUser(null);
+    localStorage.removeItem('salesme_user');
+    setActiveView('monitor');
+  };
+
+  const savePartner = async () => {
+    if (!newPartner.name) return alert('El nombre es obligatorio');
+    setIsSavingPartner(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+
+      const isEdit = !!editingPartner;
+      const url = isEdit ? `/api/odoo/partners/${editingPartner.id}` : '/api/odoo/partners';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify({
+          values: newPartner,
+          company_id: activeExplorerCompanyId
+        })
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(isEdit ? 'Cliente actualizado' : 'Cliente creado');
+        setIsCreatePartnerModalOpen(false);
+        setIsEditPartnerModalOpen(false);
+        setEditingPartner(null);
+        setNewPartner({ name: '', email: '', phone: '', mobile: '', vat: '', street: '', city: '' });
+        loadAll();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsSavingPartner(false);
     }
   };
 
@@ -295,7 +394,6 @@ export default function App() {
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [activeTab, setActiveTab] = useState<'monitor' | 'setup' | 'flujo' | 'explorer' | 'conexion'>('conexion');
   const [explorerData, setExplorerData] = useState<Record<number, {products: any[], partners: any[]}>>({});
@@ -304,22 +402,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<'dashboard' | 'catalog' | 'orders' | 'partners' | 'settings'>('dashboard');
   const [orderTab, setOrderTab] = useState<'all' | 'draft' | 'sent'>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [vendedorLogueado, setVendedorLogueado] = useState<Seller | null>(null);
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const user = formData.get('user') as string;
-    const pass = formData.get('pass') as string;
-
-    if (user === 'admin' && pass === 'admin123') {
-      setIsAuthenticated(true);
-      setLoginError('');
-    } else {
-      setLoginError('Credenciales incorrectas');
-    }
-  };
 
   const handleConfigChange = (field: string, value: string) => {
     setOdooConfig(prev => ({ ...prev, [field]: value }));
@@ -353,6 +437,34 @@ export default function App() {
       return null;
     }
   }, [config]);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('/api/odoo/config');
+        const data = await res.json();
+        if (data.status === 'ok' && data.config) {
+          setOdooConfig(prev => ({
+            ...prev,
+            ...data.config
+          }));
+          
+          // If we have config, fetch companies too
+          if (data.config.url && data.config.db) {
+            const cRes = await fetch('/api/odoo/companies');
+            const cData = await cRes.json();
+            if (cData.status === 'ok') {
+              setAvailableCompanies(cData.companies || []);
+              setExplorerCompanies(cData.companies || []);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching config:', e);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const checkAccess = async () => {
     setIsCheckingAccess(true);
@@ -405,6 +517,35 @@ export default function App() {
       setConfigError(err?.message || 'Error desconocido durante el diagnóstico');
     } finally {
       setIsDiagnosing(false);
+    }
+  };
+
+  const [isSyncingUsers, setIsSyncingUsers] = useState(false);
+
+  const syncUsers = async () => {
+    setIsSyncingUsers(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (loggedInUser) {
+        headers['x-odoo-email'] = loggedInUser.email;
+        headers['x-odoo-password'] = loggedInUser.password;
+        headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+      }
+      
+      const res = await fetch('/api/odoo/sync-users', {
+        method: 'POST',
+        headers
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        alert(`Sincronización exitosa: ${data.count} usuarios sincronizados.`);
+      } else {
+        alert('Error al sincronizar: ' + data.error);
+      }
+    } catch (e: any) {
+      alert('Error de red: ' + e.message);
+    } finally {
+      setIsSyncingUsers(false);
     }
   };
 
@@ -507,16 +648,20 @@ export default function App() {
   const loadAll = useCallback(async () => {
     setIsRefreshing(true);
     
-    // Check if we should use server-side proxy or direct Supabase
-    const useProxy = !config.url || !config.key;
-    
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (loggedInUser) {
+      headers['x-odoo-email'] = loggedInUser.email;
+      headers['x-odoo-password'] = loggedInUser.password;
+      headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+    }
+
     try {
       // Always try to fetch from our server first as it has the service role key
       const [statsRes, ordersRes, odooRes, odooOrdersRes] = await Promise.all([
-        fetch('/api/stats'),
-        fetch('/api/recent-orders'),
-        fetch('/api/odoo/stats'),
-        fetch(`/api/odoo/orders${activeExplorerCompanyId ? `?companyId=${activeExplorerCompanyId}` : ''}`)
+        fetch('/api/stats', { headers }),
+        fetch('/api/recent-orders', { headers }),
+        fetch('/api/odoo/stats', { headers }),
+        fetch(`/api/odoo/orders${activeExplorerCompanyId ? `?companyId=${activeExplorerCompanyId}` : ''}`, { headers })
       ]);
       
       const stats = await statsRes.json();
@@ -545,7 +690,7 @@ export default function App() {
     }
 
     // If user provided direct Supabase credentials, we can also fetch additional details directly
-    if (!useProxy) {
+    if (config.url && config.key) {
       try {
         const [syncLog, sessions, vendedores] = await Promise.all([
           sbFetch(`/rest/v1/sync_log?company_id=eq.${config.company}&order=created_at.desc&limit=10`),
@@ -566,31 +711,42 @@ export default function App() {
 
     setIsRefreshing(false);
     setLastUpdate(new Date().toLocaleTimeString());
-  }, [config, sbFetch]);
+  }, [config, sbFetch, activeExplorerCompanyId, loggedInUser]);
 
   const loadExplorerData = async () => {
     setIsExplorerLoading(true);
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (loggedInUser) {
+      headers['x-odoo-email'] = loggedInUser.email;
+      headers['x-odoo-password'] = loggedInUser.password;
+      headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
+    }
+
     try {
       // First, get companies if we don't have them
       let companies = explorerCompanies;
       if (companies.length === 0) {
-        const cRes = await fetch('/api/odoo/companies');
+        const cRes = await fetch('/api/odoo/companies', { headers });
         const cData = await cRes.json();
         if (cData.status === 'ok') {
           companies = cData.companies;
           setExplorerCompanies(companies);
           if (companies.length > 0 && !activeExplorerCompanyId) {
-            setActiveExplorerCompanyId(companies[0].id);
+            if (loggedInUser) {
+              setActiveExplorerCompanyId(loggedInUser.company_id);
+            } else {
+              setActiveExplorerCompanyId(companies[0].id);
+            }
           }
         }
       }
 
       if (companies.length > 0) {
-        const targetCompanyId = activeExplorerCompanyId || companies[0].id;
+        const targetCompanyId = loggedInUser ? loggedInUser.company_id : (activeExplorerCompanyId || companies[0].id);
         
         const [pRes, ptRes] = await Promise.all([
-          fetch(`/api/odoo/products?companyId=${targetCompanyId}`),
-          fetch(`/api/odoo/partners?companyId=${targetCompanyId}`)
+          fetch(`/api/odoo/products?companyId=${targetCompanyId}`, { headers }),
+          fetch(`/api/odoo/partners?companyId=${targetCompanyId}`, { headers })
         ]);
         
         const pData = await pRes.json();
@@ -641,87 +797,77 @@ export default function App() {
     setIsModalOpen(false);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg p-6 relative overflow-hidden">
-        {/* Atmospheric Background Blobs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-odoo-purple/10 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-odoo-green/10 rounded-full blur-[120px] animate-pulse" />
-        
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white overflow-hidden z-10"
-        >
-          <div className="p-8">
-            <div className="flex flex-col items-center mb-8 text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-odoo-purple to-odoo-green rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-odoo-purple/30 transform -rotate-6">
-                <Rocket className="w-12 h-12 text-white fill-current" />
-              </div>
-              <h1 className="text-3xl font-black text-text-main tracking-tight mb-2 font-display">SalesMe</h1>
-              <p className="text-text-muted text-sm leading-relaxed max-w-[280px]">
-                La solución definitiva de <strong>GaorSystem Perú</strong> para generar órdenes de venta reales en Odoo de manera segura y confiable, impulsando la productividad de tu equipo al máximo.
-              </p>
-            </div>
-
-            <div className="mb-8 p-4 bg-gray-50 rounded-2xl border border-border-light/50">
-              <p className="text-[11px] text-text-muted font-medium text-center italic">
-                "Transforma conversaciones en cotizaciones reales en segundos, eliminando la carga administrativa y acelerando el cierre de ventas."
-              </p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5 ml-1">Usuario</label>
-                <input 
-                  name="user"
-                  type="text" 
-                  required
-                  className="w-full px-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple transition-all"
-                  placeholder="admin"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-text-muted uppercase mb-1.5 ml-1">Contraseña</label>
-                <input 
-                  name="pass"
-                  type="password" 
-                  required
-                  className="w-full px-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 focus:border-odoo-purple transition-all"
-                  placeholder="••••••••"
-                />
-              </div>
-
-              {loginError && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-3 bg-odoo-red/10 border border-odoo-red/20 rounded-lg text-odoo-red text-xs font-medium text-center"
-                >
-                  {loginError}
-                </motion.div>
-              )}
-
-              <button 
-                type="submit"
-                className="w-full py-3.5 bg-gradient-to-r from-odoo-purple to-odoo-purple-dark hover:from-odoo-purple-dark hover:to-odoo-purple text-white rounded-xl font-bold text-sm shadow-lg shadow-odoo-purple/20 transition-all active:scale-[0.98]"
-              >
-                Iniciar Sesión
-              </button>
-            </form>
-          </div>
-          <div className="bg-gray-50 p-4 border-t border-border-light text-center">
-            <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest">
-              © 2024 SalesMe · Desarrollado por <a href="https://gaorsystem.vercel.app/" target="_blank" rel="noopener noreferrer" className="text-odoo-purple hover:underline">GaorSystem Perú</a>
-            </p>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
+      {!loggedInUser ? (
+        <div className="min-h-screen flex items-center justify-center bg-bg p-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+          >
+            <div className="p-8 bg-odoo-purple text-white text-center">
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Rocket className="w-10 h-10 text-white fill-current" />
+              </div>
+              <h2 className="text-2xl font-black font-display">SalesMe Login</h2>
+              <p className="text-sm opacity-80">Ingresa con tus credenciales de Odoo</p>
+            </div>
+            <form onSubmit={handleLogin} className="p-8 space-y-6">
+              <div>
+                <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Usuario / Email</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                  <input 
+                    type="text" 
+                    required
+                    value={loginForm.email}
+                    onChange={e => setLoginForm({...loginForm, email: e.target.value})}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
+                    placeholder="admin o correo@empresa.com"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-2">Contraseña</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                  <input 
+                    type="password" 
+                    required
+                    value={loginForm.password}
+                    onChange={e => setLoginForm({...loginForm, password: e.target.value})}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+              <button 
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-4 bg-odoo-purple text-white rounded-2xl text-sm font-bold hover:bg-odoo-purple-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-purple/20"
+              >
+                {isLoggingIn ? <RefreshCw className="w-5 h-5 animate-spin" /> : 'Iniciar Sesión'}
+              </button>
+
+              <div className="pt-4 text-center">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setLoginForm({ email: 'admin', password: '' });
+                  }}
+                  className="text-xs text-text-muted hover:text-odoo-purple transition-colors flex items-center justify-center gap-1 mx-auto"
+                >
+                  <ShieldCheck className="w-3 h-3" />
+                  Acceso Administrativo
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      ) : (
+        <>
       {/* Desktop Header - Hidden on Mobile */}
       <header className="hidden md:flex sticky top-0 z-50 items-center justify-between px-6 py-2 bg-odoo-purple text-white shadow-md">
         <div className="flex items-center gap-6">
@@ -777,15 +923,17 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
+          <div className="flex flex-col items-end mr-2">
             <span className="text-[10px] font-bold opacity-70 uppercase tracking-widest">Vendedor</span>
-            <span className="text-xs font-bold">{vendedorLogueado?.nombre || 'Administrador'}</span>
+            <span className="text-xs font-bold">{loggedInUser?.name}</span>
+            <span className="text-[9px] opacity-60">{loggedInUser?.company_name}</span>
           </div>
           <button 
-            onClick={() => setIsModalOpen(true)}
-            className="p-2 hover:bg-white/10 rounded-full transition-colors"
+            onClick={handleLogout}
+            className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+            title="Cerrar Sesión"
           >
-            <Settings className="w-5 h-5" />
+            <LogOut className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -819,7 +967,13 @@ export default function App() {
             <section className="bg-white border border-border-light rounded-2xl p-6 flex flex-col gap-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold text-text-muted uppercase tracking-wider font-display">Resumen General</h2>
-                <Activity className="w-4 h-4 text-odoo-purple" />
+                <button 
+                  onClick={() => setActiveView('catalog')}
+                  className="px-3 py-1 bg-odoo-purple/10 text-odoo-purple rounded-lg text-[10px] font-bold hover:bg-odoo-purple/20 transition-all flex items-center gap-1"
+                >
+                  <Plus className="w-3 h-3" />
+                  Nuevo Pedido
+                </button>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
@@ -1012,7 +1166,7 @@ export default function App() {
               </div>
             </div>
 
-            {explorerCompanies.length > 1 && (
+            {explorerCompanies.length > 1 && (!loggedInUser || loggedInUser.role === 'admin') && (
               <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
                 {explorerCompanies.map(c => (
                   <button
@@ -1091,7 +1245,7 @@ export default function App() {
               </div>
             </div>
 
-            {explorerCompanies.length > 1 && (
+            {explorerCompanies.length > 1 && (!loggedInUser || loggedInUser.role === 'admin') && (
               <div className="flex gap-2 mb-4 overflow-x-auto pb-2 custom-scrollbar">
                 {explorerCompanies.map(c => (
                   <button
@@ -1198,6 +1352,17 @@ export default function App() {
               <h2 className="text-xl font-bold text-text-main font-display">Mis Clientes</h2>
               <div className="flex items-center gap-2">
                 <button 
+                  onClick={() => {
+                    setEditingPartner(null);
+                    setNewPartner({ name: '', email: '', phone: '', mobile: '', vat: '', street: '', city: '' });
+                    setIsCreatePartnerModalOpen(true);
+                  }}
+                  className="px-4 py-2 bg-odoo-green text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-green-dark transition-all shadow-md shadow-odoo-green/20"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Nuevo Cliente
+                </button>
+                <button 
                   onClick={() => setIsOrderModalOpen(true)}
                   className="px-4 py-2 bg-odoo-purple text-white rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-odoo-purple-dark transition-all"
                 >
@@ -1223,7 +1388,7 @@ export default function App() {
               </div>
             </div>
 
-            {explorerCompanies.length > 1 && (
+            {explorerCompanies.length > 1 && (!loggedInUser || loggedInUser.role === 'admin') && (
               <div className="flex gap-2 mb-4 overflow-x-auto pb-2 custom-scrollbar">
                 {explorerCompanies.map(c => (
                   <button
@@ -1260,6 +1425,15 @@ export default function App() {
                   <button 
                     onClick={() => {
                       setEditingPartner(p);
+                      setNewPartner({
+                        name: p.name || '',
+                        email: p.email || '',
+                        phone: p.phone || '',
+                        mobile: p.mobile || '',
+                        vat: p.vat || '',
+                        street: p.street || '',
+                        city: p.city || ''
+                      });
                       setIsEditPartnerModalOpen(true);
                     }}
                     className="p-2 text-text-muted hover:text-odoo-purple"
@@ -1282,8 +1456,8 @@ export default function App() {
                     👤
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-text-main">{vendedorLogueado?.nombre || 'Administrador'}</div>
-                    <div className="text-sm text-text-muted">{vendedorLogueado?.whatsapp_phone || 'admin@gaorsystem.com'}</div>
+                    <div className="text-lg font-bold text-text-main">{loggedInUser?.name || 'Administrador'}</div>
+                    <div className="text-sm text-text-muted">{loggedInUser?.email || 'admin@gaorsystem.com'}</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 pt-4">
@@ -1299,60 +1473,165 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
-              <div className="p-4 bg-gray-50 border-b border-border-light font-bold text-xs text-text-muted uppercase tracking-wider">Conexión Odoo</div>
-              <div className="p-6 space-y-6">
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">URL de Odoo</label>
-                    <input 
-                      type="url" 
-                      value={odooConfig.url} 
-                      onChange={e => setOdooConfig({...odooConfig, url: e.target.value})}
-                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
-                    />
+            {loggedInUser?.role === 'admin' && (
+              <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-4 bg-gray-50 border-b border-border-light font-bold text-xs text-text-muted uppercase tracking-wider">Conexión Odoo</div>
+                <div className="p-6 space-y-6">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">URL de Odoo</label>
+                      <input 
+                        type="url" 
+                        value={odooConfig.url} 
+                        onChange={e => setOdooConfig({...odooConfig, url: e.target.value})}
+                        className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Base de Datos</label>
+                      <input 
+                        type="text" 
+                        value={odooConfig.db} 
+                        onChange={e => setOdooConfig({...odooConfig, db: e.target.value})}
+                        className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Usuario</label>
+                      <input 
+                        type="text" 
+                        value={odooConfig.username} 
+                        onChange={e => setOdooConfig({...odooConfig, username: e.target.value})}
+                        className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Contraseña</label>
+                      <input 
+                        type="password" 
+                        value={odooConfig.password} 
+                        onChange={e => setOdooConfig({...odooConfig, password: e.target.value})}
+                        className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Base de Datos</label>
-                    <input 
-                      type="text" 
-                      value={odooConfig.db} 
-                      onChange={e => setOdooConfig({...odooConfig, db: e.target.value})}
-                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
-                    />
+                  
+                  <button 
+                    onClick={saveOdooConfig}
+                    className="w-full py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple/90 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    Guardar Cambios
+                  </button>
+
+                  <div className="pt-4 border-t border-border-light space-y-4">
+                    <button 
+                      onClick={discoverCompanies}
+                      disabled={isDiscovering || !odooConfig.url || !odooConfig.db || !odooConfig.username || !odooConfig.password}
+                      className="w-full py-2.5 bg-gray-900 text-white rounded-xl text-sm font-bold hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isDiscovering ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Activity className="w-4 h-4" />}
+                      {isDiscovering ? 'Conectando...' : 'Verificar Conexión y Listar Compañías'}
+                    </button>
+
+                    {availableCompanies.length > 0 && (
+                      <div className="space-y-3">
+                        <label className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Seleccionar Compañías</label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {availableCompanies.map(company => {
+                            if (!company || !company.id) return null;
+                            const isSelected = odooConfig.companyIds.includes(company.id);
+                            return (
+                              <button
+                                key={company.id}
+                                onClick={() => {
+                                  setOdooConfig(prev => {
+                                    const newIds = isSelected 
+                                      ? prev.companyIds.filter(id => id !== company.id)
+                                      : [...prev.companyIds, company.id];
+                                    return { ...prev, companyIds: newIds };
+                                  });
+                                }}
+                                className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                  isSelected 
+                                    ? 'bg-odoo-purple/5 border-odoo-purple ring-1 ring-odoo-purple' 
+                                    : 'bg-white border-border-light hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${
+                                    isSelected ? 'bg-odoo-purple text-white' : 'bg-gray-100 text-text-muted'
+                                  }`}>
+                                    {company.name ? company.name.charAt(0) : '?'}
+                                  </div>
+                                  <span className="text-xs font-semibold text-text-main">{company.name || 'Sin nombre'}</span>
+                                </div>
+                                {isSelected && (
+                                  <CheckCircle2 className="w-4 h-4 text-odoo-purple" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <button 
+                          onClick={checkAccess}
+                          disabled={isCheckingAccess || odooConfig.companyIds.length === 0}
+                          className="w-full py-2 bg-white border border-border-light text-text-main rounded-xl text-xs font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isCheckingAccess ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                          Verificar Permisos de Modelos
+                        </button>
+
+                        {accessResults && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(accessResults).map(([model, res]: [string, any]) => (
+                              <div key={model} className={`p-2 rounded-lg border text-[9px] flex flex-col gap-1 ${res.access ? 'bg-odoo-green/5 border-odoo-green/20' : 'bg-odoo-red/5 border-odoo-red/20'}`}>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold truncate">{model}</span>
+                                  {res.access ? <CheckCircle2 className="w-2.5 h-2.5 text-odoo-green" /> : <AlertTriangle className="w-2.5 h-2.5 text-odoo-red" />}
+                                </div>
+                                <span className="text-text-muted">
+                                  {res.access ? `${res.count} registros` : 'Sin acceso'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Usuario</label>
-                    <input 
-                      type="text" 
-                      value={odooConfig.username} 
-                      onChange={e => setOdooConfig({...odooConfig, username: e.target.value})}
-                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-text-muted uppercase tracking-wider mb-1.5">Contraseña</label>
-                    <input 
-                      type="password" 
-                      value={odooConfig.password} 
-                      onChange={e => setOdooConfig({...odooConfig, password: e.target.value})}
-                      className="w-full bg-gray-50 border border-border-light rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-odoo-purple/20 transition-all"
-                    />
-                  </div>
+
+                  {configError && (
+                    <div className="p-3 bg-odoo-red/10 border border-odoo-red/20 rounded-xl flex items-center gap-2 text-odoo-red text-[11px]">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      {configError}
+                    </div>
+                  )}
+
+                  {configSuccess && (
+                    <div className="p-3 bg-odoo-green/10 border border-odoo-green/20 rounded-xl flex items-center gap-2 text-odoo-green text-[11px]">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      {configSuccess}
+                    </div>
+                  )}
+
+                  {loggedInUser?.role === 'admin' && (
+                    <button 
+                      onClick={syncUsers}
+                      disabled={isSyncingUsers}
+                      className="w-full py-3 bg-odoo-green/10 text-odoo-green border border-odoo-green/20 rounded-xl text-sm font-bold hover:bg-odoo-green/20 transition-all flex items-center justify-center gap-2 mt-4"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+                      Sincronizar Usuarios de Odoo
+                    </button>
+                  )}
                 </div>
-                
-                <button 
-                  onClick={saveOdooConfig}
-                  className="w-full py-3 bg-odoo-purple text-white rounded-xl text-sm font-bold hover:bg-odoo-purple/90 transition-all flex items-center justify-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  Guardar Cambios
-                </button>
               </div>
-            </div>
+            )}
 
             <button 
-              onClick={() => setIsAuthenticated(false)}
+              onClick={handleLogout}
               className="w-full py-4 bg-odoo-red/10 text-odoo-red border border-odoo-red/20 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"
             >
               <LogOut className="w-5 h-5" />
@@ -1365,6 +1644,8 @@ export default function App() {
           </div>
         )}
       </main>
+      </>
+      )}
 
 
 
@@ -2081,6 +2362,127 @@ export default function App() {
                   className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2"
                 >
                   {isCreatingOrder ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Sí, Crear'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {/* Modal for Create/Edit Partner */}
+        {(isCreatePartnerModalOpen || isEditPartnerModalOpen) && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
+            >
+              <div className="p-6 bg-odoo-purple text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <UserPlus className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black font-display">{isEditPartnerModalOpen ? 'Editar Cliente' : 'Nuevo Cliente'}</h3>
+                    <p className="text-[10px] opacity-80 uppercase tracking-widest font-bold">Información de Contacto</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setIsCreatePartnerModalOpen(false);
+                    setIsEditPartnerModalOpen(false);
+                  }}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Nombre Completo *</label>
+                    <input 
+                      type="text" 
+                      value={newPartner.name}
+                      onChange={e => setNewPartner({...newPartner, name: e.target.value})}
+                      className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                      placeholder="Ej. Juan Pérez"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">RUC / DNI</label>
+                    <input 
+                      type="text" 
+                      value={newPartner.vat}
+                      onChange={e => setNewPartner({...newPartner, vat: e.target.value})}
+                      className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                      placeholder="Ej. 20123456789"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Correo Electrónico</label>
+                    <input 
+                      type="email" 
+                      value={newPartner.email}
+                      onChange={e => setNewPartner({...newPartner, email: e.target.value})}
+                      className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                      placeholder="correo@ejemplo.com"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Teléfono / Celular</label>
+                    <input 
+                      type="text" 
+                      value={newPartner.mobile}
+                      onChange={e => setNewPartner({...newPartner, mobile: e.target.value})}
+                      className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                      placeholder="Ej. 987654321"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Dirección</label>
+                  <input 
+                    type="text" 
+                    value={newPartner.street}
+                    onChange={e => setNewPartner({...newPartner, street: e.target.value})}
+                    className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    placeholder="Av. Las Flores 123"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Ciudad / Distrito</label>
+                  <input 
+                    type="text" 
+                    value={newPartner.city}
+                    onChange={e => setNewPartner({...newPartner, city: e.target.value})}
+                    className="w-full p-3 bg-gray-50 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none"
+                    placeholder="Ej. Lima"
+                  />
+                </div>
+              </div>
+
+              <div className="p-6 bg-gray-50 border-t border-border-light flex gap-3">
+                <button 
+                  onClick={() => {
+                    setIsCreatePartnerModalOpen(false);
+                    setIsEditPartnerModalOpen(false);
+                  }}
+                  className="flex-1 py-3 bg-white border border-border-light text-text-main rounded-xl text-sm font-bold hover:bg-gray-100 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={savePartner}
+                  disabled={isSavingPartner}
+                  className="flex-1 py-3 bg-odoo-green text-white rounded-xl text-sm font-bold hover:bg-odoo-green-dark transition-all flex items-center justify-center gap-2 shadow-lg shadow-odoo-green/20"
+                >
+                  {isSavingPartner ? <RefreshCw className="w-4 h-4 animate-spin" /> : (isEditPartnerModalOpen ? 'Actualizar' : 'Crear Cliente')}
                 </button>
               </div>
             </motion.div>
