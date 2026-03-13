@@ -160,6 +160,13 @@ const StatusPill = ({ status, text }: { status: 'ok' | 'error' | 'pending' | 'di
   );
 };
 
+const getAvailableQty = (product: any) => {
+  if (!product) return 0;
+  if (product.free_qty !== undefined) return product.free_qty;
+  if (product.virtual_available !== undefined) return product.virtual_available;
+  return product.qty_available || 0;
+};
+
 export default function App() {
   const [config, setConfig] = useState<Config>(() => ({
     url: localStorage.getItem('of_url') || '',
@@ -1381,11 +1388,11 @@ export default function App() {
                     <div className="flex flex-col gap-1 pt-2">
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-black text-text-main">S/ {p.list_price?.toFixed(2)}</div>
-                        <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${p.qty_available > 0 ? 'bg-odoo-green/10 text-odoo-green' : 'bg-odoo-red/10 text-odoo-red'}`}>
-                          {p.qty_available || 0} Real
+                        <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getAvailableQty(p) > 0 ? 'bg-odoo-green/10 text-odoo-green' : 'bg-odoo-red/10 text-odoo-red'}`}>
+                          {getAvailableQty(p) || 0} Disp
                         </div>
                       </div>
-                      {p.virtual_available !== undefined && p.virtual_available !== p.qty_available && (
+                      {p.virtual_available !== undefined && p.virtual_available !== getAvailableQty(p) && (
                         <div className="flex items-center justify-end">
                           <div className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
                             {p.virtual_available || 0} Proyectado
@@ -1398,11 +1405,11 @@ export default function App() {
                     onClick={() => {
                       setSelectedProductForCart({ product: p, qty: 1, comment: '', price_unit: p.list_price || 0, price_change_reason: '' });
                     }}
-                    disabled={p.qty_available <= 0}
-                    className={`w-full mt-3 py-3 md:py-2 border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${p.qty_available > 0 ? 'bg-gray-50 hover:bg-odoo-purple hover:text-white text-text-main' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`}
+                    disabled={getAvailableQty(p) <= 0}
+                    className={`w-full mt-3 py-3 md:py-2 border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${getAvailableQty(p) > 0 ? 'bg-gray-50 hover:bg-odoo-purple hover:text-white text-text-main' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`}
                   >
                     <Plus className="w-4 h-4 md:w-3 md:h-3" />
-                    {p.qty_available > 0 ? 'Agregar' : 'Sin Stock'}
+                    {getAvailableQty(p) > 0 ? 'Agregar' : 'Sin Stock'}
                   </button>
                 </motion.div>
               ))}
@@ -2544,10 +2551,10 @@ export default function App() {
                         <div className="flex items-center gap-6 text-right">
                           <div className="flex flex-col items-end">
                             <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Stock</span>
-                            <span className={`text-sm font-bold ${p.qty_available > 0 ? 'text-odoo-green' : 'text-odoo-red'}`}>
-                              {p.qty_available} Real
+                            <span className={`text-sm font-bold ${getAvailableQty(p) > 0 ? 'text-odoo-green' : 'text-odoo-red'}`}>
+                              {getAvailableQty(p)} Disp
                             </span>
-                            {p.virtual_available !== undefined && p.virtual_available !== p.qty_available && (
+                            {p.virtual_available !== undefined && p.virtual_available !== getAvailableQty(p) && (
                               <span className="text-[9px] font-bold text-blue-600">
                                 {p.virtual_available} Proy.
                               </span>
@@ -2563,8 +2570,8 @@ export default function App() {
                             onClick={() => {
                               setSelectedProductForCart({ product: p, qty: 1, comment: '', price_unit: p.list_price || 0, price_change_reason: '' });
                             }}
-                            disabled={p.qty_available <= 0}
-                            className={`p-3 md:p-2 rounded-xl md:rounded-lg transition-all ${p.qty_available > 0 ? 'bg-odoo-purple/10 text-odoo-purple hover:bg-odoo-purple hover:text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`}
+                            disabled={getAvailableQty(p) <= 0}
+                            className={`p-3 md:p-2 rounded-xl md:rounded-lg transition-all ${getAvailableQty(p) > 0 ? 'bg-odoo-purple/10 text-odoo-purple hover:bg-odoo-purple hover:text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`}
                           >
                             <Plus className="w-5 h-5" />
                           </button>
@@ -2608,10 +2615,10 @@ export default function App() {
                                 <button 
                                   onClick={() => setNewOrder(prev => ({
                                     ...prev,
-                                    lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: Math.min(product?.qty_available || line.qty, line.qty + 1) } : line)
+                                    lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: Math.min(getAvailableQty(product) || line.qty, line.qty + 1) } : line)
                                   }))}
-                                  disabled={l.qty >= (product?.qty_available || 0)}
-                                  className={`text-text-muted hover:text-odoo-purple w-8 h-8 md:w-auto md:h-auto flex items-center justify-center ${l.qty >= (product?.qty_available || 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  disabled={l.qty >= (getAvailableQty(product) || 0)}
+                                  className={`text-text-muted hover:text-odoo-purple w-8 h-8 md:w-auto md:h-auto flex items-center justify-center ${l.qty >= (getAvailableQty(product) || 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                   +
                                 </button>
@@ -2714,7 +2721,7 @@ export default function App() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Cantidad</label>
-                    <span className="text-[10px] font-bold text-odoo-green bg-odoo-green/10 px-2 py-0.5 rounded">Stock: {selectedProductForCart.product.qty_available}</span>
+                    <span className="text-[10px] font-bold text-odoo-green bg-odoo-green/10 px-2 py-0.5 rounded">Stock: {getAvailableQty(selectedProductForCart.product)}</span>
                   </div>
                   <div className="flex items-center gap-4">
                     <button 
@@ -2726,19 +2733,19 @@ export default function App() {
                     <input 
                       type="number" 
                       min="1"
-                      max={selectedProductForCart.product.qty_available}
+                      max={getAvailableQty(selectedProductForCart.product)}
                       value={selectedProductForCart.qty}
                       onChange={(e) => {
                         let val = parseInt(e.target.value) || 1;
-                        if (val > selectedProductForCart.product.qty_available) val = selectedProductForCart.product.qty_available;
+                        if (val > getAvailableQty(selectedProductForCart.product)) val = getAvailableQty(selectedProductForCart.product);
                         setSelectedProductForCart(prev => prev ? { ...prev, qty: val } : null);
                       }}
                       className="flex-1 h-12 md:h-10 text-center border border-border-light rounded-xl font-bold text-text-main focus:ring-2 focus:ring-odoo-purple/20 outline-none"
                     />
                     <button 
-                      onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: Math.min(prev.product.qty_available, prev.qty + 1) } : null)}
-                      disabled={selectedProductForCart.qty >= selectedProductForCart.product.qty_available}
-                      className={`w-12 h-12 md:w-10 md:h-10 rounded-xl flex items-center justify-center font-bold text-lg transition-all ${selectedProductForCart.qty >= selectedProductForCart.product.qty_available ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 text-text-main hover:bg-gray-200'}`}
+                      onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: Math.min(getAvailableQty(prev.product), prev.qty + 1) } : null)}
+                      disabled={selectedProductForCart.qty >= getAvailableQty(selectedProductForCart.product)}
+                      className={`w-12 h-12 md:w-10 md:h-10 rounded-xl flex items-center justify-center font-bold text-lg transition-all ${selectedProductForCart.qty >= getAvailableQty(selectedProductForCart.product) ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 text-text-main hover:bg-gray-200'}`}
                     >
                       +
                     </button>

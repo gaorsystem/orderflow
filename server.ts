@@ -405,7 +405,7 @@ app.get("/api/odoo/products", async (req, res) => {
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'virtual_available', 'company_id'], kwargs);
+    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'virtual_available', 'free_qty', 'company_id'], kwargs);
     res.json({ status: "ok", products });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -426,7 +426,7 @@ app.post("/api/odoo/sync-products", async (req, res) => {
       kwargs.context = { company_id: companyId, allowed_company_ids: [companyId] };
     }
 
-    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'virtual_available', 'company_id'], kwargs);
+    const products = await conn.searchRead('product.product', domain, ['name', 'list_price', 'default_code', 'qty_available', 'virtual_available', 'free_qty', 'company_id'], kwargs);
     
     const supabase = getSupabase();
     if (!supabase) return res.json({ status: "ok", count: products.length, products });
