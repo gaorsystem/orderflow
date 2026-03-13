@@ -44,20 +44,6 @@ import {
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import L from 'leaflet';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-import { Map as MapIcon, List } from 'lucide-react';
-
-let DefaultIcon = L.icon({
-    iconUrl: icon,
-    shadowUrl: iconShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
 
 // --- Types ---
 
@@ -214,10 +200,7 @@ export default function App() {
   const [odooEmployees, setOdooEmployees] = useState<any[]>([]);
   const [isUsersLoading, setIsUsersLoading] = useState(false);
   const [devices, setDevices] = useState<any[]>([]);
-  const [visits, setVisits] = useState<any[]>([]);
   const [isDevicesLoading, setIsDevicesLoading] = useState(false);
-  const [isVisitsLoading, setIsVisitsLoading] = useState(false);
-  const [isMapView, setIsMapView] = useState(false);
   const [userTab, setUserTab] = useState<'users' | 'employees'>('users');
   const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number, comment?: string, price_unit?: number, price_change_reason?: string}[], note?: string}>({
     partner_id: 0,
@@ -521,7 +504,7 @@ export default function App() {
   const [explorerData, setExplorerData] = useState<Record<number, {products: any[], partners: any[]}>>({});
   const [explorerCompanies, setExplorerCompanies] = useState<{id: number, name: string}[]>([]);
   const [activeExplorerCompanyId, setActiveExplorerCompanyId] = useState<number | null>(null);
-  const [activeView, setActiveView] = useState<'dashboard' | 'catalog' | 'orders' | 'partners' | 'settings' | 'devices' | 'visits'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'catalog' | 'orders' | 'partners' | 'settings' | 'devices'>('dashboard');
   const [orderTab, setOrderTab] = useState<'all' | 'draft' | 'sent'>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isExplorerLoading, setIsExplorerLoading] = useState(false);
@@ -1050,20 +1033,6 @@ export default function App() {
     setIsDevicesLoading(false);
   };
 
-  const loadVisits = async () => {
-    setIsVisitsLoading(true);
-    const { data, error } = await supabase
-      .from('vendor_visits')
-      .select('*, vendedores(nombre)')
-      .order('created_at', { ascending: false });
-    if (error) {
-      alert('Error al cargar visitas: ' + error.message);
-    } else {
-      setVisits(data || []);
-    }
-    setIsVisitsLoading(false);
-  };
-
   const deleteDevice = async (deviceId: string) => {
     if (!confirm('¿Estás seguro de eliminar este dispositivo?')) return;
     const { error } = await supabase
@@ -1117,9 +1086,6 @@ export default function App() {
   useEffect(() => {
     if (activeView === 'devices') {
       loadDevices();
-    }
-    if (activeView === 'visits') {
-      loadVisits();
     }
   }, [activeView]);
 
@@ -1279,14 +1245,6 @@ export default function App() {
             >
               Clientes
             </button>
-            {loggedInUser?.role === 'admin' && (
-              <button 
-                onClick={() => setActiveView('visits')}
-                className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'visits' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
-              >
-                Visitas
-              </button>
-            )}
             {loggedInUser?.role === 'admin' && (
               <>
                 <button 
@@ -2014,83 +1972,6 @@ export default function App() {
               </div>
             </div>
           </div>
-        ) : activeView === 'visits' ? (
-          loggedInUser ? (
-            loggedInUser.role === 'admin' ? (
-              <div className="max-w-6xl mx-auto space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-bold text-text-main font-display">Registro de Visitas</h2>
-                  <button 
-                    onClick={() => setIsMapView(!isMapView)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-border-light rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-all"
-                  >
-                    {isMapView ? <List className="w-4 h-4" /> : <MapIcon className="w-4 h-4" />}
-                    {isMapView ? 'Ver Tabla' : 'Ver Mapa'}
-                  </button>
-                </div>
-                
-                {isMapView ? (
-                  <div className="h-[600px] w-full rounded-2xl overflow-hidden border border-border-light shadow-sm">
-                    <MapContainer center={[-12.0464, -77.0428]} zoom={12} style={{ height: '100%', width: '100%' }}>
-                      <TileLayer
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                      />
-                      {visits.map((v, i) => (
-                        v.lat && v.lng && (
-                          <Marker key={i} position={[v.lat, v.lng]}>
-                            <Popup>
-                              <div className="text-xs">
-                                <div className="font-bold">{v.vendedores?.nombre}</div>
-                                <div>{v.visit_type}</div>
-                                <div>{new Date(v.created_at).toLocaleString()}</div>
-                              </div>
-                            </Popup>
-                          </Marker>
-                        )
-                      ))}
-                    </MapContainer>
-                  </div>
-                ) : (
-                  <div className="bg-white border border-border-light rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left">
-                      <thead className="bg-gray-50 border-b border-border-light">
-                        <tr>
-                          <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Vendedor</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Fecha</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Tipo</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-text-muted uppercase">Ubicación</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border-light">
-                        {visits.map((v, i) => (
-                          <tr key={i} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-6 py-4 text-sm font-bold text-text-main">{v.vendedores?.nombre || 'Desconocido'}</td>
-                            <td className="px-6 py-4 text-sm text-text-muted">{new Date(v.created_at).toLocaleString()}</td>
-                            <td className="px-6 py-4 text-sm font-bold capitalize">{v.visit_type}</td>
-                            <td className="px-6 py-4">
-                              <a 
-                                href={`https://www.google.com/maps/search/?api=1&query=${v.lat},${v.lng}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-odoo-purple hover:text-odoo-purple/80 font-bold text-xs"
-                              >
-                                Ver en Mapa
-                              </a>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="p-4 text-center text-text-muted">No tienes permiso para ver esta sección.</div>
-            )
-          ) : (
-            <div className="p-4 text-center text-text-muted">Inicia sesión para ver esta sección.</div>
-          )
         ) : activeView === 'devices' ? (
           <div className="max-w-4xl mx-auto space-y-4">
             <h2 className="text-xl font-bold text-text-main font-display">Gestión de Dispositivos</h2>
@@ -2741,23 +2622,9 @@ export default function App() {
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => registerVisit('checkin')}
-                    className="px-3 py-1.5 bg-odoo-green text-white rounded-lg text-[10px] font-bold hover:bg-odoo-green/90 transition-all"
-                  >
-                    Check-in
-                  </button>
-                  <button 
-                    onClick={() => registerVisit('checkout')}
-                    className="px-3 py-1.5 bg-odoo-red text-white rounded-lg text-[10px] font-bold hover:bg-odoo-red/90 transition-all"
-                  >
-                    Check-out
-                  </button>
-                  <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
-                    <XCircle className="w-6 h-6 text-text-muted" />
-                  </button>
-                </div>
+                <button onClick={() => setIsOrderModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full transition-all bg-gray-100 md:bg-transparent">
+                  <XCircle className="w-6 h-6 text-text-muted" />
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar pb-32 md:pb-6">
