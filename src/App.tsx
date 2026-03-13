@@ -16,6 +16,7 @@ import {
   Rocket,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   XCircle,
   Clock,
   ShieldCheck,
@@ -189,12 +190,12 @@ export default function App() {
   const [odooEmployees, setOdooEmployees] = useState<any[]>([]);
   const [isUsersLoading, setIsUsersLoading] = useState(false);
   const [userTab, setUserTab] = useState<'users' | 'employees'>('users');
-  const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number, comment?: string}[], note?: string}>({
+  const [newOrder, setNewOrder] = useState<{partner_id: number, lines: {product_id: number, qty: number, comment?: string, price_unit?: number, price_change_reason?: string}[], note?: string}>({
     partner_id: 0,
     lines: [],
     note: ''
   });
-  const [selectedProductForCart, setSelectedProductForCart] = useState<{product: any, qty: number, comment: string} | null>(null);
+  const [selectedProductForCart, setSelectedProductForCart] = useState<{product: any, qty: number, comment: string, price_unit: number, price_change_reason: string} | null>(null);
   const [showConfirmOrder, setShowConfirmOrder] = useState(false);
 
   useEffect(() => {
@@ -233,6 +234,24 @@ export default function App() {
         headers['x-odoo-company-id'] = loggedInUser.company_id.toString();
       }
 
+      let price_modifications = '';
+      const order_line = newOrder.lines.map(l => {
+        const product = explorerData[activeExplorerCompanyId || 0]?.products.find(p => p.id === l.product_id);
+        let name = product?.name || '';
+        if (l.comment) {
+          name += `\nNota: ${l.comment}`;
+        }
+        if (l.price_unit !== undefined && l.price_unit !== product?.list_price && l.price_change_reason) {
+          price_modifications += `<b>[PRECIO MODIFICADO] Original:</b> S/ ${product?.list_price?.toFixed(2)} -> Nuevo: S/ ${l.price_unit.toFixed(2)} Motivo: ${l.price_change_reason} (Producto: ${product?.name})<br/>`;
+        }
+        return [0, 0, {
+          product_id: l.product_id,
+          product_uom_qty: l.qty,
+          price_unit: l.price_unit !== undefined ? l.price_unit : (product?.list_price || 0),
+          name: name
+        }];
+      });
+
       const res = await fetch('/api/odoo/orders', {
         method: 'POST',
         headers,
@@ -241,19 +260,8 @@ export default function App() {
           company_id: activeExplorerCompanyId,
           confirm: confirm,
           note: newOrder.note,
-          order_line: newOrder.lines.map(l => {
-            const product = explorerData[activeExplorerCompanyId || 0]?.products.find(p => p.id === l.product_id);
-            let name = product?.name || '';
-            if (l.comment) {
-              name += `\nNota: ${l.comment}`;
-            }
-            return [0, 0, {
-              product_id: l.product_id,
-              product_uom_qty: l.qty,
-              price_unit: product?.list_price || 0,
-              name: name
-            }];
-          })
+          price_modifications: price_modifications,
+          order_line: order_line
         })
       });
       const data = await res.json();
@@ -1361,12 +1369,13 @@ export default function App() {
                   </div>
                   <button 
                     onClick={() => {
-                      setSelectedProductForCart({ product: p, qty: 1, comment: '' });
+                      setSelectedProductForCart({ product: p, qty: 1, comment: '', price_unit: p.list_price || 0, price_change_reason: '' });
                     }}
-                    className="w-full mt-3 py-3 md:py-2 bg-gray-50 hover:bg-odoo-purple hover:text-white border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    disabled={p.qty_available <= 0}
+                    className={`w-full mt-3 py-3 md:py-2 border border-border-light rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${p.qty_available > 0 ? 'bg-gray-50 hover:bg-odoo-purple hover:text-white text-text-main' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`}
                   >
                     <Plus className="w-4 h-4 md:w-3 md:h-3" />
-                    Agregar
+                    {p.qty_available > 0 ? 'Agregar' : 'Sin Stock'}
                   </button>
                 </motion.div>
               ))}
@@ -1455,7 +1464,8 @@ export default function App() {
                   <div className="text-right">
                     <div className="text-sm font-black text-text-main">S/ {newOrder.lines.reduce((total, l) => {
                       const product = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.products.find(p => p.id === l.product_id) : null;
-                      return total + ((product?.list_price || 0) * l.qty);
+                      const price = l.price_unit !== undefined ? l.price_unit : (product?.list_price || 0);
+                      return total + (price * l.qty);
                     }, 0).toFixed(2)}</div>
                     <div className="text-[9px] font-bold uppercase tracking-widest text-odoo-amber">
                       Continuar Editando
@@ -2520,9 +2530,10 @@ export default function App() {
                           </div>
                           <button 
                             onClick={() => {
-                              setSelectedProductForCart({ product: p, qty: 1, comment: '' });
+                              setSelectedProductForCart({ product: p, qty: 1, comment: '', price_unit: p.list_price || 0, price_change_reason: '' });
                             }}
-                            className="p-3 md:p-2 bg-odoo-purple/10 text-odoo-purple rounded-xl md:rounded-lg hover:bg-odoo-purple hover:text-white transition-all"
+                            disabled={p.qty_available <= 0}
+                            className={`p-3 md:p-2 rounded-xl md:rounded-lg transition-all ${p.qty_available > 0 ? 'bg-odoo-purple/10 text-odoo-purple hover:bg-odoo-purple hover:text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`}
                           >
                             <Plus className="w-5 h-5" />
                           </button>
@@ -2566,21 +2577,28 @@ export default function App() {
                                 <button 
                                   onClick={() => setNewOrder(prev => ({
                                     ...prev,
-                                    lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: line.qty + 1 } : line)
+                                    lines: prev.lines.map((line, idx) => idx === i ? { ...line, qty: Math.min(product?.qty_available || line.qty, line.qty + 1) } : line)
                                   }))}
-                                  className="text-text-muted hover:text-odoo-purple w-8 h-8 md:w-auto md:h-auto flex items-center justify-center"
+                                  disabled={l.qty >= (product?.qty_available || 0)}
+                                  className={`text-text-muted hover:text-odoo-purple w-8 h-8 md:w-auto md:h-auto flex items-center justify-center ${l.qty >= (product?.qty_available || 0) ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                   +
                                 </button>
                               </div>
                               <div className="flex flex-col">
                                 <span className="text-xs font-bold text-text-main">{product?.name}</span>
+                                {l.price_unit !== undefined && l.price_unit !== product?.list_price && (
+                                  <span className="text-[10px] text-odoo-amber font-bold">
+                                    Precio modificado (Original: S/ {product?.list_price?.toFixed(2)})
+                                  </span>
+                                )}
+                                {l.price_change_reason && <span className="text-[10px] text-text-muted italic">Motivo: {l.price_change_reason}</span>}
                                 {l.comment && <span className="text-[10px] text-text-muted italic">Nota: {l.comment}</span>}
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
                               <span className="text-xs font-bold text-odoo-purple">
-                                S/ {((product?.list_price || 0) * l.qty).toFixed(2)}
+                                S/ {((l.price_unit !== undefined ? l.price_unit : (product?.list_price || 0)) * l.qty).toFixed(2)}
                               </span>
                               <button 
                                 onClick={() => setNewOrder(prev => ({ ...prev, lines: prev.lines.filter((_, idx) => idx !== i) }))}
@@ -2608,7 +2626,8 @@ export default function App() {
                         <span className="text-sm font-bold text-text-main">
                           S/ {newOrder.lines.reduce((total, l) => {
                             const product = activeExplorerCompanyId ? explorerData[activeExplorerCompanyId]?.products.find(p => p.id === l.product_id) : null;
-                            return total + ((product?.list_price || 0) * l.qty);
+                            const price = l.price_unit !== undefined ? l.price_unit : (product?.list_price || 0);
+                            return total + (price * l.qty);
                           }, 0).toFixed(2)}
                         </span>
                       </div>
@@ -2662,7 +2681,10 @@ export default function App() {
                 </div>
                 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Cantidad</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Cantidad</label>
+                    <span className="text-[10px] font-bold text-odoo-green bg-odoo-green/10 px-2 py-0.5 rounded">Stock: {selectedProductForCart.product.qty_available}</span>
+                  </div>
                   <div className="flex items-center gap-4">
                     <button 
                       onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: Math.max(1, prev.qty - 1) } : null)}
@@ -2673,17 +2695,48 @@ export default function App() {
                     <input 
                       type="number" 
                       min="1"
+                      max={selectedProductForCart.product.qty_available}
                       value={selectedProductForCart.qty}
-                      onChange={(e) => setSelectedProductForCart(prev => prev ? { ...prev, qty: parseInt(e.target.value) || 1 } : null)}
+                      onChange={(e) => {
+                        let val = parseInt(e.target.value) || 1;
+                        if (val > selectedProductForCart.product.qty_available) val = selectedProductForCart.product.qty_available;
+                        setSelectedProductForCart(prev => prev ? { ...prev, qty: val } : null);
+                      }}
                       className="flex-1 h-12 md:h-10 text-center border border-border-light rounded-xl font-bold text-text-main focus:ring-2 focus:ring-odoo-purple/20 outline-none"
                     />
                     <button 
-                      onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: prev.qty + 1 } : null)}
-                      className="w-12 h-12 md:w-10 md:h-10 rounded-xl bg-gray-100 flex items-center justify-center text-text-main hover:bg-gray-200 font-bold text-lg"
+                      onClick={() => setSelectedProductForCart(prev => prev ? { ...prev, qty: Math.min(prev.product.qty_available, prev.qty + 1) } : null)}
+                      disabled={selectedProductForCart.qty >= selectedProductForCart.product.qty_available}
+                      className={`w-12 h-12 md:w-10 md:h-10 rounded-xl flex items-center justify-center font-bold text-lg transition-all ${selectedProductForCart.qty >= selectedProductForCart.product.qty_available ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-gray-100 text-text-main hover:bg-gray-200'}`}
                     >
                       +
                     </button>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-muted uppercase tracking-wider">Precio Unitario (S/)</label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    value={selectedProductForCart.price_unit}
+                    onChange={(e) => setSelectedProductForCart(prev => prev ? { ...prev, price_unit: parseFloat(e.target.value) || 0 } : null)}
+                    className="w-full p-3 border border-border-light rounded-xl text-sm focus:ring-2 focus:ring-odoo-purple/20 outline-none font-bold text-odoo-purple"
+                  />
+                  {selectedProductForCart.price_unit !== selectedProductForCart.product.list_price && (
+                    <div className="mt-3 space-y-2 p-3 bg-odoo-amber/10 rounded-xl border border-odoo-amber/20">
+                      <label className="text-xs font-bold text-odoo-amber uppercase tracking-wider flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Motivo del cambio de precio *
+                      </label>
+                      <textarea 
+                        value={selectedProductForCart.price_change_reason}
+                        onChange={(e) => setSelectedProductForCart(prev => prev ? { ...prev, price_change_reason: e.target.value } : null)}
+                        placeholder={`Obligatorio: Explica por qué se modificó el precio original (S/ ${selectedProductForCart.product.list_price?.toFixed(2)})`}
+                        className="w-full p-2 border border-odoo-amber/30 rounded-lg text-sm focus:ring-2 focus:ring-odoo-amber/50 outline-none resize-none h-16 bg-white"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -2700,7 +2753,11 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setNewOrder(prev => {
-                      const existingIndex = prev.lines.findIndex(l => l.product_id === selectedProductForCart.product.id && l.comment === selectedProductForCart.comment);
+                      const existingIndex = prev.lines.findIndex(l => 
+                        l.product_id === selectedProductForCart.product.id && 
+                        l.comment === selectedProductForCart.comment &&
+                        l.price_unit === selectedProductForCart.price_unit
+                      );
                       if (existingIndex >= 0) {
                         const newLines = [...prev.lines];
                         newLines[existingIndex].qty += selectedProductForCart.qty;
@@ -2708,13 +2765,20 @@ export default function App() {
                       } else {
                         return {
                           ...prev,
-                          lines: [...prev.lines, { product_id: selectedProductForCart.product.id, qty: selectedProductForCart.qty, comment: selectedProductForCart.comment }]
+                          lines: [...prev.lines, { 
+                            product_id: selectedProductForCart.product.id, 
+                            qty: selectedProductForCart.qty, 
+                            comment: selectedProductForCart.comment,
+                            price_unit: selectedProductForCart.price_unit,
+                            price_change_reason: selectedProductForCart.price_change_reason
+                          }]
                         };
                       }
                     });
                     setSelectedProductForCart(null);
                   }}
-                  className="w-full py-4 md:py-3 bg-odoo-purple text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20"
+                  disabled={selectedProductForCart.price_unit !== selectedProductForCart.product.list_price && selectedProductForCart.price_change_reason.trim() === ''}
+                  className="w-full py-4 md:py-3 bg-odoo-purple text-white rounded-2xl md:rounded-xl text-sm font-bold hover:bg-odoo-purple-dark transition-all shadow-lg shadow-odoo-purple/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Agregar al Carrito
                 </button>

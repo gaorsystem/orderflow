@@ -620,7 +620,7 @@ app.get("/api/odoo/orders", async (req, res) => {
 });
 
 app.post("/api/odoo/orders", async (req, res) => {
-  const { partner_id, order_line, company_id, confirm, note } = req.body;
+  const { partner_id, order_line, company_id, confirm, note, price_modifications } = req.body;
   try {
     const { conn, error } = await getOdooConn(req);
     if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
@@ -633,13 +633,19 @@ app.post("/api/odoo/orders", async (req, res) => {
       };
     }
 
+    let formattedNote = note ? note.replace(/\n/g, '<br/>') : '';
+    let finalNote = formattedNote ? `${formattedNote}<br/><br/>🚀 Cotización generada desde SalesMe App (GaorSystem)` : "🚀 Cotización generada desde SalesMe App (GaorSystem)";
+    if (price_modifications) {
+      finalNote += `<br/><br/>${price_modifications}`;
+    }
+
     // order_line should be an array of [0, 0, { product_id, product_uom_qty, price_unit, name }]
     const orderId = await conn.create('sale.order', {
       partner_id,
       order_line,
       company_id: company_id ? parseInt(company_id) : undefined,
       user_id: (conn as any).uid, // Asignar al usuario que está autenticado en la conexión Odoo
-      note: note ? `${note}\n\n🚀 Cotización generada desde SalesMe App (GaorSystem)` : "🚀 Cotización generada desde SalesMe App (GaorSystem)"
+      note: finalNote
     }, kwargs);
 
     if (confirm) {
