@@ -1245,7 +1245,7 @@ export default function App() {
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-black text-odoo-green">S/ {parseFloat(p.amount_total || 0).toFixed(2)}</div>
-                          <div className="text-[9px] text-text-muted font-bold">{new Date(p.date_order).toLocaleDateString()}</div>
+                          <div className="text-[9px] text-text-muted font-bold">{new Date(p.date_order).toLocaleDateString('es-PE', { timeZone: 'America/Lima' })}</div>
                         </div>
                       </button>
                     );
@@ -1538,7 +1538,7 @@ export default function App() {
                       </div>
                       <div>
                         <div className="text-sm font-bold text-text-main">{p.name}</div>
-                        <div className="text-[10px] text-text-muted font-medium">{p.partner_id?.[1] || 'Cliente Desconocido'} · {new Date(p.date_order).toLocaleDateString()}</div>
+                        <div className="text-[10px] text-text-muted font-medium">{p.partner_id?.[1] || 'Cliente Desconocido'} · {new Date(p.date_order).toLocaleDateString('es-PE', { timeZone: 'America/Lima' })}</div>
                       </div>
                     </div>
                     <div className="text-right">
@@ -3030,7 +3030,7 @@ export default function App() {
                   </div>
                   <div className="bg-white p-4 rounded-2xl border border-border-light shadow-sm col-span-2">
                     <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Fecha</div>
-                    <div className="text-sm font-bold text-text-main">{new Date(selectedOrderDetails.date_order).toLocaleString()}</div>
+                    <div className="text-sm font-bold text-text-main">{new Date(selectedOrderDetails.date_order).toLocaleString('es-PE', { timeZone: 'America/Lima' })}</div>
                   </div>
                 </div>
 
