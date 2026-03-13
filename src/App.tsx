@@ -1279,12 +1279,14 @@ export default function App() {
             >
               Clientes
             </button>
-            <button 
-              onClick={() => setActiveView('visits')}
-              className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'visits' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
-            >
-              Visitas
-            </button>
+            {loggedInUser?.role === 'admin' && (
+              <button 
+                onClick={() => setActiveView('visits')}
+                className={`px-4 h-full text-sm font-medium transition-colors border-b-2 ${activeView === 'visits' ? 'border-white bg-white/10' : 'border-transparent hover:bg-white/5'}`}
+              >
+                Visitas
+              </button>
+            )}
             {loggedInUser?.role === 'admin' && (
               <>
                 <button 
@@ -2012,7 +2014,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        ) : activeView === 'visits' ? (
+        ) : (activeView === 'visits' && loggedInUser?.role === 'admin') ? (
           <div className="max-w-6xl mx-auto space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-text-main font-display">Registro de Visitas</h2>
