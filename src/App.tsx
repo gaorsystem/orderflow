@@ -182,7 +182,12 @@ export default function App() {
   const [isCreatePartnerModalOpen, setIsCreatePartnerModalOpen] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<OdooUser | null>(() => {
     const saved = localStorage.getItem('salesme_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('Error parsing saved user:', e);
+      return null;
+    }
   });
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [isLoggingIn, setIsLoggingIn] = useState(false);
