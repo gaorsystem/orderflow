@@ -38,11 +38,14 @@ const getOdooConn = async (req?: express.Request) => {
   const password = req?.headers['x-odoo-password'] as string;
   const companyId = req?.headers['x-odoo-company-id'] as string;
 
+  // Si el usuario es 'admin' (hardcoded), usamos las credenciales maestras de Odoo configuradas en el sistema
+  const isHardcodedAdmin = email === 'admin';
+  
   const cfg: any = {
     url: process.env.ODOO_URL || 'https://marketperu.facturaclic.pe/',
     db: process.env.ODOO_DB || 'marketperu_master',
-    username: email || process.env.ODOO_USERNAME,
-    password: password || process.env.ODOO_PASSWORD,
+    username: isHardcodedAdmin ? (process.env.ODOO_USERNAME || email) : (email || process.env.ODOO_USERNAME),
+    password: isHardcodedAdmin ? (process.env.ODOO_PASSWORD || password) : (password || process.env.ODOO_PASSWORD),
   };
 
   if (companyId) {
@@ -52,7 +55,12 @@ const getOdooConn = async (req?: express.Request) => {
   }
 
   if (!cfg.url || !cfg.db || !cfg.username || !cfg.password) {
-    return null;
+    const missing = [];
+    if (!cfg.url) missing.push('URL');
+    if (!cfg.db) missing.push('Base de Datos');
+    if (!cfg.username) missing.push('Usuario');
+    if (!cfg.password) missing.push('Contraseña');
+    return { error: `Configuración de Odoo incompleta: falta ${missing.join(', ')}` };
   }
 
   let url = cfg.url.trim();
@@ -60,14 +68,15 @@ const getOdooConn = async (req?: express.Request) => {
   if (url.endsWith('/')) url = url.slice(0, -1);
 
   try {
-    return await getConnection({
+    const conn = await getConnection({
       ...cfg,
       url: url,
       debug: true
     });
-  } catch (e) {
-    console.error("Error connecting to Odoo:", e);
-    return null;
+    return { conn };
+  } catch (e: any) {
+    console.error("[Odoo] Error de conexión:", e.message);
+    return { error: `Error de conexión con Odoo: ${e.message}` };
   }
 };
 
@@ -215,8 +224,12 @@ app.post("/api/odoo/login", async (req, res) => {
 
 app.post("/api/odoo/sync-users", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado o sesión inválida" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) {
+      return res.status(400).json({ 
+        error: error || "Odoo no configurado o sesión inválida. Verifica las credenciales en la pestaña de Configuración." 
+      });
+    }
 
     console.log("[Sync] Obteniendo usuarios de Odoo...");
     const odooUsers = await conn.searchRead('res.users', [['share', '=', false]], ['name', 'login', 'email', 'company_id', 'company_ids']);
@@ -251,8 +264,12 @@ app.post("/api/odoo/sync-users", async (req, res) => {
 
 app.post("/api/odoo/sync-employees", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado o sesión inválida" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) {
+      return res.status(400).json({ 
+        error: error || "Odoo no configurado o sesión inválida. Verifica las credenciales en la pestaña de Configuración." 
+      });
+    }
 
     console.log("[Sync] Obteniendo empleados de Odoo...");
     const employees = await conn.searchRead('hr.employee', [], ['name', 'work_email', 'mobile_phone', 'work_phone', 'company_id', 'active']);
@@ -377,8 +394,8 @@ app.post("/api/odoo/config", async (req, res) => {
 app.get("/api/odoo/products", async (req, res) => {
   try {
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
     
     const domain: any[] = [['sale_ok', '=', true]];
     const kwargs: any = { limit: 1000 }; // Aumentar límite para sincronizar más productos
@@ -398,8 +415,8 @@ app.get("/api/odoo/products", async (req, res) => {
 app.get("/api/odoo/partners", async (req, res) => {
   try {
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
 
     const domain: any[] = [];
     const kwargs: any = { limit: 1000 };
@@ -418,8 +435,8 @@ app.get("/api/odoo/partners", async (req, res) => {
 
 app.get("/api/odoo/employees", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
     
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
     const domain: any[] = [];
@@ -437,8 +454,8 @@ app.get("/api/odoo/employees", async (req, res) => {
 
 app.get("/api/odoo/users", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
     
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
     const domain: any[] = [['share', '=', false]]; // Internal users only
@@ -456,8 +473,8 @@ app.get("/api/odoo/users", async (req, res) => {
 
 app.get("/api/odoo/companies", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
     const companies = await conn.searchRead('res.company', [], ['name', 'id']);
     res.json({ status: "ok", companies });
   } catch (err: any) {
@@ -467,8 +484,8 @@ app.get("/api/odoo/companies", async (req, res) => {
 
 app.get("/api/odoo/check-access", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
 
     const models = ['res.partner', 'product.product', 'hr.employee', 'sale.order'];
     const results: any = {};
@@ -491,8 +508,8 @@ app.get("/api/odoo/check-access", async (req, res) => {
 app.get("/api/odoo/orders", async (req, res) => {
   try {
     const companyId = req.query.companyId ? parseInt(req.query.companyId as string) : null;
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
 
     const domain: any[] = [];
     const kwargs: any = { 
@@ -522,8 +539,8 @@ app.get("/api/odoo/orders", async (req, res) => {
 app.post("/api/odoo/orders", async (req, res) => {
   const { partner_id, order_line, company_id, confirm, note } = req.body;
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
 
     const kwargs: any = {};
     if (company_id) {
@@ -556,8 +573,8 @@ app.put("/api/odoo/partners/:id", async (req, res) => {
   const { id } = req.params;
   const { values, company_id } = req.body;
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
 
     const kwargs: any = {};
     if (company_id) {
@@ -577,8 +594,8 @@ app.put("/api/odoo/partners/:id", async (req, res) => {
 app.post("/api/odoo/partners", async (req, res) => {
   const { values, company_id } = req.body;
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) return res.status(400).json({ error: "Odoo no configurado" });
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) return res.status(400).json({ error: error || "Odoo no configurado" });
 
     const kwargs: any = {};
     if (company_id) {
@@ -597,8 +614,8 @@ app.post("/api/odoo/partners", async (req, res) => {
 
 app.get("/api/odoo/stats", async (req, res) => {
   try {
-    const conn = await getOdooConn(req);
-    if (!conn) {
+    const { conn, error } = await getOdooConn(req);
+    if (error || !conn) {
       console.log("Odoo not configured, returning empty data");
       return res.json({ 
         products: 0, 
